@@ -1890,6 +1890,7 @@ function PvZRoguePrototype() {
   const [copyNote, setCopyNote] = useState("");
   const [offerCopyNote, setOfferCopyNote] = useState("");
   const [buffPickLocked, setBuffPickLocked] = useState(false);
+  const [uiScale, setUiScale] = useState(1);
   const stateRef = useRef(state);
   const lastTick = useRef(Date.now());
   stateRef.current = state;
@@ -1897,6 +1898,19 @@ function PvZRoguePrototype() {
   const plantCards = useMemo(() => Object.keys(plantDefs), []);
   const scaling = Math.pow(1.2, state.buffCount).toFixed(2);
   const maxedPlants = maxBuffedPlants(state);
+
+
+  useEffect(() => {
+    function updateScale() {
+      const widthScale = window.innerWidth / 930;
+      const heightScale = window.innerHeight / 720;
+      setUiScale(clamp(Math.min(widthScale, heightScale), 1, 1.55));
+    }
+
+    updateScale();
+    window.addEventListener("resize", updateScale);
+    return () => window.removeEventListener("resize", updateScale);
+  }, []);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -2359,7 +2373,7 @@ function PvZRoguePrototype() {
 
   return (
     <div className="min-h-screen overflow-x-auto bg-gradient-to-b from-emerald-950 via-green-900 to-lime-950 p-2 text-white">
-      <div className="mx-auto w-fit space-y-2">
+      <div className="mx-auto w-fit origin-top space-y-2" style={{ transform: `scale(${uiScale})` }}>
         <div className="flex max-w-[940px] items-end justify-between gap-2">
           <div>
             <h1 className="text-xl font-black tracking-tight">PvZ Rogue</h1>
