@@ -1902,9 +1902,9 @@ function PvZRoguePrototype() {
 
   useEffect(() => {
     function updateScale() {
-      const widthScale = window.innerWidth / 930;
-      const heightScale = window.innerHeight / 720;
-      setUiScale(clamp(Math.min(widthScale, heightScale), 1, 1.55));
+      const widthScale = window.innerWidth / 760;
+      const heightScale = window.innerHeight / 620;
+      setUiScale(clamp(Math.min(widthScale, heightScale), 1.15, 2));
     }
 
     updateScale();
