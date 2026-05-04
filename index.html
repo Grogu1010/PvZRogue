@@ -1,0 +1,2517 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+
+const ROWS = 5;
+const COLS = 9;
+const TICK_MS = 100;
+const CELL_W = 64;
+const CELL_H = 62;
+const BOARD_W = COLS * CELL_W;
+const BOARD_H = ROWS * CELL_H;
+const SAVE_KEY = "pvz-rogue-save-v7";
+const SKY_SUN_INTERVAL = 6.5;
+const MAX_SUN_SLOWDOWN_AT_ROGUE_POINTS = 200;
+
+function sunEconomySlowFactor(state) {
+  const steppedPoints = Math.min(MAX_SUN_SLOWDOWN_AT_ROGUE_POINTS, Math.floor((state.roguePoints || 0) / 10) * 10);
+  return 1 + 2 * (steppedPoints / MAX_SUN_SLOWDOWN_AT_ROGUE_POINTS);
+}
+
+function currentSkySunInterval(state) {
+  return (SKY_SUN_INTERVAL * sunEconomySlowFactor(state)) / Math.max(0.01, state.skySunRate || 1);
+}
+
+const RARITY_WEIGHTS = { Common: 10, Uncommon: 5, Rare: 4.04, Epic: 3.13, Legendary: 2.6 };
+const RARITY_RANK = { Common: 0, Uncommon: 1, Rare: 2, Epic: 3, Legendary: 4 };
+const RARITY_STYLES = {
+  Common: "border-slate-300/40 bg-slate-900/45",
+  Uncommon: "border-lime-300/45 bg-lime-950/45",
+  Rare: "border-sky-300/50 bg-sky-950/45",
+  Epic: "border-purple-300/60 bg-purple-950/55",
+  Legendary: "border-yellow-300/70 bg-yellow-950/60",
+};
+
+const plantDefs = {
+  peashooter: { name: "Peashooter", icon: "🌱", cost: 100, hp: 300, kind: "shooter", damage: 22, fireRate: 1.35 },
+  sunflower: { name: "Sunflower", icon: "🌻", cost: 50, hp: 220, kind: "sun", sunRate: 8.5, sunAmount: 50 },
+  wallnut: { name: "Wall Nut", icon: "🥜", cost: 50, hp: 1000, kind: "wall" },
+  tallnut: { name: "Tall Nut", icon: "🧱", cost: 100, hp: 2250, kind: "wall", blocksAir: true },
+  chomper: { name: "Chomper", icon: "🪴", cost: 75, hp: 400, kind: "chomper", biteDamage: 9999, biteCd: 12 },
+  cherrybomb: { name: "Cherry Bomb", icon: "🍒", cost: 150, hp: 1, kind: "bomb", radius: 1, damage: 2520, fuse: 1.1, gargBonus: 1.25 },
+  spikeweed: { name: "Spikeweed", icon: "🪤", cost: 75, hp: 300, kind: "spike", damage: 11 },
+  cactus: { name: "Cactus", icon: "🌵", cost: 150, hp: 340, kind: "shooter", damage: 28, fireRate: 1.15, hitsAir: true },
+  cabbagepult: { name: "Cabbage Pult", icon: "🥬", cost: 100, hp: 300, kind: "lobber", damage: 34, fireRate: 1.7, hitsAir: true },
+  bonkchoy: { name: "Bonk Choy", icon: "🥊", cost: 150, hp: 420, kind: "melee", damage: 18, punchRate: 3.5 },
+};
+
+const zombieDefs = {
+  basic: { name: "Basic Zombie", icon: "🧟", points: 1, hp: 180, speed: 11, damage: 38, unlock: 0, flying: false },
+  imp: { name: "Imp", icon: "👺", points: 1, hp: 60, speed: 44, damage: 24, unlock: 1, flying: false },
+  conehead: { name: "Conehead", icon: "🚧", points: 3, hp: 380, speed: 9.5, damage: 45, unlock: 2, flying: false },
+  balloon: { name: "Balloon Zombie", icon: "🎈", points: 2, hp: 135, speed: 12, damage: 35, unlock: 3, flying: true },
+  buckethead: { name: "Bucket Head", icon: "🪣", points: 5, hp: 760, speed: 8.5, damage: 55, unlock: 4, flying: false },
+  gargantuar: { name: "Gargantuar", icon: "🗿", points: 15, hp: 1850, speed: 3.2, damage: 180, unlock: 8, flying: false },
+};
+
+function rarityForBuff(name) {
+  const epic = new Set(["Split Peas", "Solar Flare", "Tall-but-skinny Nut", "Staggering Wall", "Toxic Burp", "Cluster Bomb", "Buried Roots", "Needle Storm", "Splash Cabbage", "Fourteen-Armed Choynado"]);
+  const rare = new Set(["Piercing Peas", "Frozen Peas", "Twinflower", "Golden Petals", "Rogue Petals", "Spiky Shell", "Nut Repair", "Towering", "Auto Patch", "Long Tongue", "Spare Teeth", "Backbite Vines", "Bigger Boom", "Afterburn", "Sticky Spikes", "Tire Popper", "Balloon Hunter", "Piercing Needles", "Stunning Slaw", "Rotten Cabbage", "Siege Cabbage", "Mower Workshop", "Lucky Packet", "Root Network", "Battlefield Salvage", "Last Stand", "Bomb School", "Cross Counter", "Spinach Surge"]);
+  const uncommon = new Set(["Bigger Peas", "Quick Sprouts", "Overgrowth", "Fast Bloom", "Sunburst", "Emergency Photosynthesis", "Hard Shell", "Panic Shell", "Stone Nut", "Air Stopper", "Iron Crown", "Hungry", "Big Mouth", "Predator Plant", "Stronger Boom", "Sunfire", "Double Stem", "Doom Cherry", "Sharper Spikes", "Rapid Pricks", "Spikerock Dream", "Sharper Needles", "Fast Needles", "Prickly Legend", "Heavy Cabbage", "Quick Toss", "Double Toss", "Royal Cabbage", "Garden Fertilizer", "Compost Armor", "Solar Winds", "Photosynthesis", "Garden Haste", "Nut Union", "Faster Fists", "Heavy Jabs", "Guard Stance"]);
+  if (name === "Unlock Zombie Debuffs" || name === "Evergreen Drafts" || name === "Jackpot") return "Legendary";
+  if (epic.has(name)) return "Epic";
+  if (rare.has(name)) return "Rare";
+  if (uncommon.has(name)) return "Uncommon";
+  return "Common";
+}
+
+function withRarity(item) {
+  const rarity = item.type === "debuff" ? "Legendary" : rarityForBuff(item.name);
+  return { ...item, rarity, weight: RARITY_WEIGHTS[rarity] };
+}
+
+const plantBuffs = {
+  peashooter: [
+    ["Split Peas", "+1 pea per shot", p => ({ ...p, extraShots: (p.extraShots || 0) + 1 })],
+    ["Bigger Peas", "+35% damage", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.35 })],
+    ["Quick Sprouts", "+25% fire rate", p => ({ ...p, fireRateMult: (p.fireRateMult || 1) * 1.25 })],
+    ["Piercing Peas", "Peas pierce +1 zombie", p => ({ ...p, pierce: (p.pierce || 1) + 1 })],
+    ["Cheap Shoots", "Cost -15 sun", p => ({ ...p, costFlat: (p.costFlat || 0) - 15 })],
+    ["Rooted Stems", "+80 HP", p => ({ ...p, hpFlat: (p.hpFlat || 0) + 80 })],
+    ["Double Tap", "Occasionally fires twice", p => ({ ...p, doubleChance: (p.doubleChance || 0) + 0.18 })],
+    ["Frozen Peas", "Shots slow zombies", p => ({ ...p, slowOnHit: (p.slowOnHit || 0) + 0.18 })],
+    ["Sun Peas", "Kills refund 10 sun", p => ({ ...p, killSun: (p.killSun || 0) + 10 })],
+    ["Overgrowth", "+20% damage and HP", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.2, hpMult: (p.hpMult || 1) * 1.2 })],
+  ],
+  sunflower: [
+    ["Brighter Faces", "+10 sun per bloom", p => ({ ...p, sunFlat: (p.sunFlat || 0) + 10 })],
+    ["Fast Bloom", "+25% sun rate", p => ({ ...p, sunRateMult: (p.sunRateMult || 1) * 1.25 })],
+    ["Solar Savings", "Cost -10 sun", p => ({ ...p, costFlat: (p.costFlat || 0) - 10 })],
+    ["Thick Stalks", "+100 HP", p => ({ ...p, hpFlat: (p.hpFlat || 0) + 100 })],
+    ["Sunburst", "Blooms grant +5 max sun bank", p => ({ ...p, bankGain: (p.bankGain || 0) + 5 })],
+    ["Twinflower", "20% chance to double bloom", p => ({ ...p, doubleBloom: (p.doubleBloom || 0) + 0.2 })],
+    ["Emergency Photosynthesis", "Low-sun blooms are faster", p => ({ ...p, lowSunBoost: true })],
+    ["Golden Petals", "Every 5th bloom gives +50 sun", p => ({ ...p, goldenBloom: true })],
+    ["Rogue Petals", "Collecting Sunflower sun gives +0.1 rogue points", p => ({ ...p, rogueSun: true })],
+    ["Solar Flare", "Epic: uncollected sunflower sun fires at zombies after 5 seconds", p => ({ ...p, sunShooter: true })],
+  ],
+  wallnut: [
+    ["Hard Shell", "+35% HP", p => ({ ...p, hpMult: (p.hpMult || 1) * 1.35 })],
+    ["Cheap Shell", "Cost -10 sun", p => ({ ...p, costFlat: (p.costFlat || 0) - 10 })],
+    ["Spiky Shell", "Attackers take damage", p => ({ ...p, thorns: (p.thorns || 0) + 10 })],
+    ["Nut Repair", "Slowly regenerates", p => ({ ...p, regen: (p.regen || 0) + 4 })],
+    ["Panic Shell", "Heals when under 30% HP", p => ({ ...p, panicHeal: true })],
+    ["Reinforced Roots", "+100 HP", p => ({ ...p, hpFlat: (p.hpFlat || 0) + 100 })],
+    ["Nut Refund", "Refund 25 sun when eaten", p => ({ ...p, deathSun: (p.deathSun || 0) + 25 })],
+    ["Tall-but-skinny Nut", "Can block air", p => ({ ...p, blocksAir: true })],
+    ["Fortified Row", "Other plants behind gain +10% HP", p => ({ ...p, rowAuraHp: (p.rowAuraHp || 1) * 1.1 })],
+    ["Stone Nut", "+20% HP, -20% eaten damage", p => ({ ...p, hpMult: (p.hpMult || 1) * 1.2, damageTakenMult: (p.damageTakenMult || 1) * 0.8 })],
+  ],
+  tallnut: [
+    ["Towering", "+40% HP", p => ({ ...p, hpMult: (p.hpMult || 1) * 1.4 })],
+    ["Air Stopper", "Air enemies take contact damage", p => ({ ...p, antiAirContact: (p.antiAirContact || 0) + 18 })],
+    ["Cheap Tower", "Cost -20 sun", p => ({ ...p, costFlat: (p.costFlat || 0) - 20 })],
+    ["Concrete Core", "+300 HP", p => ({ ...p, hpFlat: (p.hpFlat || 0) + 300 })],
+    ["Defender Aura", "Plants behind take -10% damage", p => ({ ...p, rowProtect: (p.rowProtect || 1) * 0.9 })],
+    ["Tall Thorns", "Attackers take 16 damage", p => ({ ...p, thorns: (p.thorns || 0) + 16 })],
+    ["Auto Patch", "Regenerates HP", p => ({ ...p, regen: (p.regen || 0) + 5 })],
+    ["Staggering Wall", "First contact knocks zombies back", p => ({ ...p, knockbackOnce: true })],
+    ["Iron Crown", "+25% HP and blocks harder", p => ({ ...p, hpMult: (p.hpMult || 1) * 1.25, damageTakenMult: (p.damageTakenMult || 1) * 0.85 })],
+    ["Heroic Nut", "Lawn mowers recharge faster", p => ({ ...p, mowerRechargeAura: true })],
+  ],
+  chomper: [
+    ["Hungry", "Bite cooldown -25%", p => ({ ...p, biteRateMult: (p.biteRateMult || 1) * 1.25 })],
+    ["Big Mouth", "Can eat tougher zombies", p => ({ ...p, biteDamageMult: (p.biteDamageMult || 1) * 1.35 })],
+    ["Cheap Chomp", "Cost -15 sun", p => ({ ...p, costFlat: (p.costFlat || 0) - 15 })],
+    ["Digestive Sun", "Eating gives 25 sun", p => ({ ...p, eatSun: (p.eatSun || 0) + 25 })],
+    ["Vine Armor", "+120 HP", p => ({ ...p, hpFlat: (p.hpFlat || 0) + 120 })],
+    ["Snap Reflex", "First bite is instant", p => ({ ...p, instantFirstBite: true })],
+    ["Toxic Burp", "After biting, damages row", p => ({ ...p, burpDamage: (p.burpDamage || 0) + 80 })],
+    ["Long Tongue", "Can bite one tile further", p => ({ ...p, biteRange: (p.biteRange || 1) + 1 })],
+    ["Backbite Vines", "Chomper can also eat zombies behind it", p => ({ ...p, backbite: true })],
+    ["Spare Teeth", "Chance not to go on cooldown", p => ({ ...p, freeBiteChance: (p.freeBiteChance || 0) + 0.18 })],
+    ["Predator Plant", "+20% HP and faster bites", p => ({ ...p, hpMult: (p.hpMult || 1) * 1.2, biteRateMult: (p.biteRateMult || 1) * 1.15 })],
+  ],
+  cherrybomb: [
+    ["Bigger Boom", "+1 blast radius", p => ({ ...p, radiusFlat: (p.radiusFlat || 0) + 1 })],
+    ["Stronger Boom", "+40% damage", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.4 })],
+    ["Fast Fuse", "Explodes quicker", p => ({ ...p, fuseMult: (p.fuseMult || 1) * 0.75 })],
+    ["Cheap Cherry", "Cost -25 sun", p => ({ ...p, costFlat: (p.costFlat || 0) - 25 })],
+    ["Afterburn", "Leaves burning ground", p => ({ ...p, burnGround: (p.burnGround || 0) + 70 })],
+    ["Sunfire", "Kills grant 10 sun", p => ({ ...p, killSun: (p.killSun || 0) + 10 })],
+    ["Cluster Bomb", "Drops a mini bomb", p => ({ ...p, cluster: true })],
+    ["Armored Fuse", "Cannot be eaten or smashed before exploding", p => ({ ...p, invulnerableFuse: true })],
+    ["Double Stem", "15% chance to replant itself", p => ({ ...p, replantChance: (p.replantChance || 0) + 0.15 })],
+    ["Doom Cherry", "+25% radius and damage", p => ({ ...p, radiusBonus: (p.radiusBonus || 0) + 0.25, damageMult: (p.damageMult || 1) * 1.25 })],
+  ],
+  spikeweed: [
+    ["Sharper Spikes", "+40% damage", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.4 })],
+    ["Rapid Pricks", "+35% damage frequency", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.35 })],
+    ["Cheap Spikes", "Cost -20 sun", p => ({ ...p, costFlat: (p.costFlat || 0) - 20 })],
+    ["Hardy Weeds", "+100 HP", p => ({ ...p, hpFlat: (p.hpFlat || 0) + 100 })],
+    ["Tire Popper", "Extra damage to Gargantuars", p => ({ ...p, bossDamageMult: (p.bossDamageMult || 1) * 1.4 })],
+    ["Sticky Spikes", "Slows grounded zombies", p => ({ ...p, slowOnHit: (p.slowOnHit || 0) + 0.12 })],
+    ["Row of Pain", "Hits a wider tile area", p => ({ ...p, widthBonus: (p.widthBonus || 0) + 0.35 })],
+    ["Buried Roots", "Cannot be hit by air zombies", p => ({ ...p, airImmune: true })],
+    ["Needle Nest", "Plants above get +8 damage thorns", p => ({ ...p, auraThorns: (p.auraThorns || 0) + 8 })],
+    ["Spikerock Dream", "+25% damage and HP", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.25, hpMult: (p.hpMult || 1) * 1.25 })],
+  ],
+  cactus: [
+    ["Sharper Needles", "+35% damage", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.35 })],
+    ["Fast Needles", "+25% fire rate", p => ({ ...p, fireRateMult: (p.fireRateMult || 1) * 1.25 })],
+    ["Balloon Hunter", "+70% vs flying", p => ({ ...p, airDamageMult: (p.airDamageMult || 1) * 1.7 })],
+    ["Cheap Cactus", "Cost -25 sun", p => ({ ...p, costFlat: (p.costFlat || 0) - 25 })],
+    ["Cactus Hide", "+120 HP", p => ({ ...p, hpFlat: (p.hpFlat || 0) + 120 })],
+    ["Piercing Needles", "Shots pierce +1", p => ({ ...p, pierce: (p.pierce || 1) + 1 })],
+    ["Needle Storm", "Chance to triple shot", p => ({ ...p, tripleChance: (p.tripleChance || 0) + 0.14 })],
+    ["Desert Sun", "Every 8 shots gives 25 sun", p => ({ ...p, shotSunEvery: 8 })],
+    ["Rooted Aim", "Longer range and +15% damage", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.15 })],
+    ["Prickly Legend", "+20% all stats", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.2, hpMult: (p.hpMult || 1) * 1.2, fireRateMult: (p.fireRateMult || 1) * 1.2 })],
+  ],
+  cabbagepult: [
+    ["Heavy Cabbage", "+45% damage", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.45 })],
+    ["Quick Toss", "+25% fire rate", p => ({ ...p, fireRateMult: (p.fireRateMult || 1) * 1.25 })],
+    ["Splash Cabbage", "Hits nearby zombies", p => ({ ...p, splash: (p.splash || 0) + 0.35 })],
+    ["Cheap Pult", "Cost -20 sun", p => ({ ...p, costFlat: (p.costFlat || 0) - 20 })],
+    ["Leafy Frame", "+100 HP", p => ({ ...p, hpFlat: (p.hpFlat || 0) + 100 })],
+    ["Siege Cabbage", "+60% damage and extra splash", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.6, splash: (p.splash || 0) + 0.45 })],
+    ["Stunning Slaw", "Chance to stun", p => ({ ...p, stunChance: (p.stunChance || 0) + 0.12 })],
+    ["Rotten Cabbage", "Applies poison", p => ({ ...p, poison: (p.poison || 0) + 7 })],
+    ["Double Toss", "Chance to toss twice", p => ({ ...p, doubleChance: (p.doubleChance || 0) + 0.18 })],
+    ["Royal Cabbage", "+20% damage and splash", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.2, splash: (p.splash || 0) + 0.2 })],
+  ],
+  bonkchoy: [
+    ["Wrist Wraps", "+25% punch speed", p => ({ ...p, punchRateMult: (p.punchRateMult || 1) * 1.25 })],
+    ["Cheap Greens", "Cost -20 sun", p => ({ ...p, costFlat: (p.costFlat || 0) - 20 })],
+    ["Leaf Guard", "+100 HP", p => ({ ...p, hpFlat: (p.hpFlat || 0) + 100 })],
+    ["Counter Jab", "Attackers take 12 damage", p => ({ ...p, thorns: (p.thorns || 0) + 12 })],
+    ["Faster Fists", "+45% punch speed", p => ({ ...p, punchRateMult: (p.punchRateMult || 1) * 1.45 })],
+    ["Heavy Jabs", "+45% punch damage", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.45 })],
+    ["Guard Stance", "+20% HP and takes -15% bite damage", p => ({ ...p, hpMult: (p.hpMult || 1) * 1.2, damageTakenMult: (p.damageTakenMult || 1) * 0.85 })],
+    ["Cross Counter", "Punches slightly into adjacent lanes too", p => ({ ...p, crossLane: true })],
+    ["Spinach Surge", "Every 6th punch hits twice as hard", p => ({ ...p, spinachSurge: true })],
+    ["Fourteen-Armed Choynado", "Epic: punches all 14 tiles in a 3x5 area around it; every 20s spins 15 hits over 3s", p => ({ ...p, choynado: true })],
+  ],
+};
+
+const globalBuffs = [
+  ["Garden Fertilizer", "All plants gain +12% damage", s => ({ ...s, allDamage: s.allDamage * 1.12 })],
+  ["Compost Armor", "All plants gain +15% HP", s => ({ ...s, allHp: s.allHp * 1.15 })],
+  ["Solar Winds", "Sky sun falls 25% faster", s => ({ ...s, skySunRate: s.skySunRate * 1.25 })],
+  ["Deep Pockets", "+150 max sun storage", s => ({ ...s, maxSun: s.maxSun + 150 })],
+  ["Emergency Stash", "+125 sun now", s => ({ ...s, sun: Math.min(s.maxSun, s.sun + 125) })],
+  ["Mower Workshop", "Used lawn mowers return after 75 seconds", s => {
+    const newRecharge = s.mowerRecharge == null ? 75 : Math.max(25, s.mowerRecharge - 25);
+    return { ...s, mowerRecharge: newRecharge, mowers: s.mowers.map(m => m.active ? m : { ...m, recharge: Number.isFinite(m.recharge) ? Math.min(m.recharge, newRecharge) : newRecharge }) };
+  }],
+  ["Seed Packets", "Plant cooldowns are 15% shorter", s => ({ ...s, cooldownMult: s.cooldownMult * 0.85 })],
+  ["Shovel Refund", "Removing plants refunds 60%", s => ({ ...s, shovelRefund: Math.max(s.shovelRefund, 0.6) })],
+  ["Extra Mower Oil", "Lawn mowers deal 2x damage", s => ({ ...s, mowerDamage: s.mowerDamage * 2 })],
+  ["Lucky Packet", "Buff choices include +1 option", s => ({ ...s, choiceCount: Math.min(5, s.choiceCount + 1) })],
+  ["Morning Bonus", "Gain +100 sun now", s => ({ ...s, sun: Math.min(s.maxSun, s.sun + 100) })],
+  ["Photosynthesis", "Sunflowers and sky sun +10% stronger", s => ({ ...s, sunValueMult: s.sunValueMult * 1.1 })],
+  ["Root Network", "Plants slowly heal", s => ({ ...s, globalRegen: s.globalRegen + 2 })],
+  ["Battlefield Salvage", "Zombies have 12% chance to drop 25 sun", s => ({ ...s, zombieSunDrop: s.zombieSunDrop + 0.12 })],
+  ["Packet Printer", "Every 3rd plant costs 25 less", s => ({ ...s, packetPrinter: true })],
+  ["Garden Haste", "Projectile plants shoot 10% faster", s => ({ ...s, shooterHaste: s.shooterHaste * 1.1 })],
+  ["Nut Union", "Walls gain +25% HP", s => ({ ...s, wallHp: s.wallHp * 1.25 })],
+  ["Bomb School", "Explosions gain +25% radius/damage", s => ({ ...s, bombPower: s.bombPower * 1.25 })],
+  ["Last Stand", "When a mower is gone, row plants gain +20% damage", s => ({ ...s, lastStand: true })],
+  ["Unlock Zombie Debuffs", "Legendary: immediately draft 3 zombie debuffs, then future right-side choices are debuffs", s => ({ ...s, debuffsUnlocked: true, pendingDebuffDrafts: 3 })],
+  ["Evergreen Drafts", "Legendary: plant/global buffs can appear again, and every repeatable buff you already got triggers once more", s => applyEvergreenEchoes({ ...s, allowBuffRepeats: true })],
+  ["Jackpot", "Legendary: choose a plant to jackpot, then also jackpot one hidden random plant", s => ({ ...s, pendingPlantJackpot: true })],
+];
+
+const zombieDebuffs = {
+  basic: [
+    ["Paper People", "Basic Zombies have only 25% HP", d => ({ ...d, basic: { ...d.basic, hp: d.basic.hp * 0.25 } })],
+    ["Trip Hazard", "Basic Zombies move 60% slower and deal half damage", d => ({ ...d, basic: { ...d.basic, speed: d.basic.speed * 0.4, damage: d.basic.damage * 0.5 } })],
+  ],
+  conehead: [
+    ["Cardboard Cones", "Coneheads lose 70% HP", d => ({ ...d, conehead: { ...d.conehead, hp: d.conehead.hp * 0.3 } })],
+    ["Cone Shame", "Coneheads are slow and worth +2 rogue points", d => ({ ...d, conehead: { ...d.conehead, speed: d.conehead.speed * 0.45, bonusPoints: (d.conehead.bonusPoints || 0) + 2 } })],
+  ],
+  buckethead: [
+    ["Magnet Buckets", "Bucket Heads take double damage from all hits", d => ({ ...d, buckethead: { ...d.buckethead, damageTaken: (d.buckethead.damageTaken || 1) * 2 } })],
+    ["Rust Collapse", "Bucket Heads lose 75% HP and 40% speed", d => ({ ...d, buckethead: { ...d.buckethead, hp: d.buckethead.hp * 0.25, speed: d.buckethead.speed * 0.6 } })],
+  ],
+  balloon: [
+    ["Paper Balloons", "Balloon Zombies have only 25% HP", d => ({ ...d, balloon: { ...d.balloon, hp: d.balloon.hp * 0.25 } })],
+    ["Popped Balloons", "Balloon Zombies become grounded and blockable", d => ({ ...d, balloon: { ...d.balloon, forceGround: true, groundedAir: true } })],
+  ],
+  imp: [
+    ["Toy Imps", "Imps have 25% HP and deal 25% damage", d => ({ ...d, imp: { ...d.imp, hp: d.imp.hp * 0.25, damage: d.imp.damage * 0.25 } })],
+    ["Sticky Shoes", "Imps move 70% slower", d => ({ ...d, imp: { ...d.imp, speed: d.imp.speed * 0.3 } })],
+  ],
+  gargantuar: [
+    ["No Smash", "Gargantuars cannot instantly smash anything. They must eat blocking plants normally and cannot eat Spikeweed.", d => ({ ...d, gargantuar: { ...d.gargantuar, noSmash: true, damage: d.gargantuar.damage * 0.7 } })],
+    ["Kale Imps", "Gargantuars throw ally Kale Imps that move right and attack zombies", d => ({ ...d, gargantuar: { ...d.gargantuar, kaleImps: true } })],
+  ],
+};
+
+const REPEATABLE_BUFF_NAMES = new Set([
+  "Bigger Peas", "Quick Sprouts", "Piercing Peas", "Cheap Shoots", "Rooted Stems", "Double Tap", "Frozen Peas", "Sun Peas", "Overgrowth",
+  "Brighter Faces", "Fast Bloom", "Solar Savings", "Thick Stalks", "Sunburst", "Twinflower", "Golden Petals",
+  "Hard Shell", "Cheap Shell", "Spiky Shell", "Nut Repair", "Panic Shell", "Reinforced Roots", "Nut Refund", "Fortified Row", "Stone Nut",
+  "Towering", "Air Stopper", "Cheap Tower", "Concrete Core", "Defender Aura", "Tall Thorns", "Auto Patch", "Iron Crown",
+  "Hungry", "Big Mouth", "Cheap Chomp", "Digestive Sun", "Vine Armor", "Long Tongue", "Spare Teeth", "Predator Plant",
+  "Bigger Boom", "Stronger Boom", "Fast Fuse", "Cheap Cherry", "Afterburn", "Sunfire", "Double Stem", "Doom Cherry",
+  "Sharper Spikes", "Rapid Pricks", "Cheap Spikes", "Hardy Weeds", "Tire Popper", "Sticky Spikes", "Row of Pain", "Needle Nest", "Spikerock Dream",
+  "Sharper Needles", "Fast Needles", "Balloon Hunter", "Cheap Cactus", "Cactus Hide", "Piercing Needles", "Desert Sun", "Rooted Aim", "Prickly Legend",
+  "Heavy Cabbage", "Quick Toss", "Splash Cabbage", "Cheap Pult", "Leafy Frame", "Siege Cabbage", "Stunning Slaw", "Rotten Cabbage", "Double Toss", "Royal Cabbage",
+  "Wrist Wraps", "Cheap Greens", "Leaf Guard", "Counter Jab", "Faster Fists", "Heavy Jabs", "Guard Stance", "Cross Counter", "Spinach Surge",
+  "Garden Fertilizer", "Compost Armor", "Solar Winds", "Deep Pockets", "Emergency Stash", "Mower Workshop", "Seed Packets", "Extra Mower Oil", "Morning Bonus", "Photosynthesis", "Root Network", "Battlefield Salvage", "Garden Haste", "Nut Union", "Bomb School"
+]);
+
+function blankPlantMods() {
+  return Object.fromEntries(Object.keys(plantDefs).map(k => [k, {}]));
+}
+
+function blankZombieMods() {
+  return Object.fromEntries(Object.keys(zombieDefs).map(k => [k, { hp: 1, speed: 1, damage: 1, groundedAir: false, forceGround: false, damageTaken: 1, bonusPoints: 0, noSmash: false, kaleImps: false }]));
+}
+
+function makeId(prefix) {
+  return `${prefix}_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+}
+
+function clamp(n, a, b) {
+  return Math.max(a, Math.min(b, n));
+}
+
+function pickWeighted(items) {
+  const valid = items.filter(item => item && item.weight > 0);
+  const total = valid.reduce((sum, item) => sum + item.weight, 0);
+  let roll = Math.random() * total;
+  for (const item of valid) {
+    roll -= item.weight;
+    if (roll <= 0) return item.item;
+  }
+  return valid[valid.length - 1]?.item;
+}
+
+function sampleWeightedUnique(items, count) {
+  const out = [];
+  const pool = [...items];
+  while (pool.length && out.length < count) {
+    const picked = pickWeighted(pool.map(item => ({ item, weight: item.weight || 1 })));
+    if (!picked) break;
+    out.push(picked);
+    const idx = pool.findIndex(item => item.name === picked.name);
+    if (idx >= 0) pool.splice(idx, 1);
+  }
+  return out;
+}
+
+function baseState() {
+  return {
+    running: true,
+    pausedForBuff: false,
+    draftMode: "normal",
+    draftMinRarity: null,
+    pendingDebuffDrafts: 0,
+    gameOver: false,
+    sun: 500,
+    maxSun: 1000,
+    score: 0,
+    roguePoints: 0,
+    nextBuffAt: 10,
+    buffCount: 0,
+    elapsed: 0,
+    selected: "peashooter",
+    shovel: false,
+    plants: [],
+    zombies: [],
+    allies: [],
+    projectiles: [],
+    floaties: [],
+    suns: [],
+    burns: [],
+    mowers: Array.from({ length: ROWS }, (_, row) => ({ row, active: true, recharge: 0 })),
+    plantMods: blankPlantMods(),
+    zombieMods: blankZombieMods(),
+    pickedBuffNames: [],
+    perPlantBuffNames: Object.fromEntries(Object.keys(plantDefs).map(k => [k, []])),
+    allowBuffRepeats: false,
+    pendingPlantJackpot: false,
+    buffLog: [],
+    choices: [],
+    allDamage: 1,
+    allHp: 1,
+    skySunRate: 1,
+    cooldownMult: 1,
+    shovelRefund: 0.25,
+    mowerRecharge: null,
+    mowerDamage: 99999,
+    choiceCount: 3,
+    sunValueMult: 1,
+    globalRegen: 0,
+    zombieSunDrop: 0,
+    packetPrinter: false,
+    plantsPlaced: 0,
+    shooterHaste: 1,
+    wallHp: 1,
+    bombPower: 1,
+    lastStand: false,
+    debuffsUnlocked: false,
+    spawnMeter: 0,
+    skySunMeter: 0,
+  };
+}
+
+function normalizeState(parsed) {
+  const base = baseState();
+  return {
+    ...base,
+    ...parsed,
+    running: false,
+    pausedForBuff: false,
+    draftMode: "normal",
+    draftMinRarity: null,
+    choices: [],
+    allies: parsed.allies || [],
+    plantMods: { ...blankPlantMods(), ...(parsed.plantMods || {}) },
+    zombieMods: { ...blankZombieMods(), ...(parsed.zombieMods || {}) },
+    pickedBuffNames: parsed.pickedBuffNames || (parsed.buffLog || []).map(b => b.name),
+    perPlantBuffNames: { ...base.perPlantBuffNames, ...(parsed.perPlantBuffNames || {}) },
+    mowerRecharge: parsed.mowerRecharge === 999999 ? null : parsed.mowerRecharge,
+  };
+}
+
+function applyPlantStats(type, mods, global) {
+  const d = plantDefs[type];
+  const m = mods[type] || {};
+  const isWall = d.kind === "wall" || type === "wallnut" || type === "tallnut";
+  const hpMult = (m.hpMult || 1) * global.allHp * (isWall ? global.wallHp : 1);
+  const damageMult = (m.damageMult || 1) * global.allDamage * (d.kind === "bomb" ? global.bombPower : 1);
+  return {
+    ...d,
+    cost: Math.max(0, Math.round((d.cost + (m.costFlat || 0)) / 5) * 5),
+    hp: Math.round((d.hp + (m.hpFlat || 0)) * hpMult),
+    damage: Math.round((d.damage || 0) * damageMult),
+    fireRate: (d.fireRate || 1) * (m.fireRateMult || 1) * global.shooterHaste,
+    punchRate: (d.punchRate || 1) * (m.punchRateMult || 1),
+    sunRate: ((d.sunRate || 1) * sunEconomySlowFactor(global)) / (m.sunRateMult || 1),
+    sunAmount: Math.round(((d.sunAmount || 0) + (m.sunFlat || 0)) * global.sunValueMult),
+    radius: Math.round(((d.radius || 0) + (m.radiusFlat || 0)) * (1 + (m.radiusBonus || 0)) * global.bombPower),
+    fuse: (d.fuse || 1) * (m.fuseMult || 1),
+    biteCd: (d.biteCd || 10) / (m.biteRateMult || 1),
+    blocksAir: d.blocksAir || m.blocksAir,
+    hitsAir: d.hitsAir || m.hitsAir,
+    mods: m,
+  };
+}
+
+function applyZombieStats(type, state) {
+  const base = zombieDefs[type];
+  const mods = state.zombieMods[type] || blankZombieMods()[type];
+  const scale = Math.pow(1.2, state.buffCount);
+  return {
+    ...base,
+    hp: base.hp * scale * mods.hp,
+    speed: base.speed * mods.speed,
+    damage: base.damage * scale * mods.damage,
+    points: base.points + (mods.bonusPoints || 0),
+    flying: base.flying && !mods.forceGround,
+    groundedAir: mods.groundedAir || mods.forceGround,
+    mods,
+  };
+}
+
+function buildBuffPool(state) {
+  const picked = new Set(state.pickedBuffNames || []);
+  const pool = [];
+  for (const [plant, buffs] of Object.entries(plantBuffs)) {
+    for (const [name, desc, fn] of buffs) {
+      if (state.allowBuffRepeats || !picked.has(name)) pool.push(withRarity({ type: "plant", plant, name, desc, fn }));
+    }
+  }
+  for (const [name, desc, fn] of globalBuffs) {
+    if (!state.allowBuffRepeats && picked.has(name)) continue;
+    if (name === "Unlock Zombie Debuffs" && state.debuffsUnlocked) continue;
+    if (name === "Evergreen Drafts" && state.allowBuffRepeats) continue;
+    if (name === "Jackpot" && state.pendingPlantJackpot) continue;
+    pool.push(withRarity({ type: "global", name, desc, fn }));
+  }
+  return pool;
+}
+
+function buildDebuffPool(state) {
+  const picked = new Set(state.pickedBuffNames || []);
+  const pool = [];
+  for (const [zombie, debuffs] of Object.entries(zombieDebuffs)) {
+    for (const [name, desc, fn] of debuffs) {
+      if (!picked.has(name)) pool.push(withRarity({ type: "debuff", zombie, name, desc, fn }));
+    }
+  }
+  return pool;
+}
+
+function filterByMinRarity(pool, minRarity) {
+  if (!minRarity) return pool;
+  const filtered = pool.filter(item => RARITY_RANK[item.rarity || "Common"] >= RARITY_RANK[minRarity]);
+  return filtered.length ? filtered : pool;
+}
+
+function milestoneMinRarity(threshold) {
+  // Applies at every multiple, not only the first time: 50, 100, 150... and 120, 240, 360...
+  if (threshold > 0 && threshold % 120 === 0) return "Epic";
+  if (threshold > 0 && threshold % 50 === 0) return "Rare";
+  return null;
+}
+
+function makeChoices(state, minRarity = state.draftMinRarity || null) {
+  const regularCount = state.debuffsUnlocked ? Math.max(0, state.choiceCount - 1) : state.choiceCount;
+  const choices = sampleWeightedUnique(filterByMinRarity(buildBuffPool(state), minRarity), regularCount);
+  if (state.debuffsUnlocked) {
+    const debuff = sampleWeightedUnique(buildDebuffPool(state), 1)[0];
+    if (debuff) choices.push(debuff);
+  }
+  return choices;
+}
+
+function makeDebuffChoices(state) {
+  return sampleWeightedUnique(buildDebuffPool(state), 3);
+}
+
+function makePlantJackpotChoices() {
+  return Object.keys(plantDefs).map(plant => ({
+    type: "plantJackpot",
+    plant,
+    name: plantDefs[plant].name,
+    desc: `Gain every missing ${plantDefs[plant].name} buff, plus every buff for one hidden random plant.`,
+    rarity: "Legendary",
+    weight: 1,
+  }));
+}
+
+function isPlantMaxBuffed(state, plant) {
+  const gotten = new Set((state.perPlantBuffNames && state.perPlantBuffNames[plant]) || []);
+  return (plantBuffs[plant] || []).length > 0 && (plantBuffs[plant] || []).every(([name]) => gotten.has(name));
+}
+
+function maxBuffedPlants(state) {
+  return Object.keys(plantDefs).filter(plant => isPlantMaxBuffed(state, plant));
+}
+
+function findPlantBuff(plant, name) {
+  const found = (plantBuffs[plant] || []).find(([buffName]) => buffName === name);
+  return found ? { plant, name: found[0], desc: found[1], fn: found[2] } : null;
+}
+
+function findGlobalBuff(name) {
+  const found = globalBuffs.find(([buffName]) => buffName === name);
+  return found ? { name: found[0], desc: found[1], fn: found[2] } : null;
+}
+
+function applyEvergreenEchoes(state) {
+  let next = { ...state, plantMods: { ...state.plantMods }, mowers: state.mowers.map(m => ({ ...m })) };
+  const seen = new Set();
+  const echoed = [];
+  for (const entry of [...(state.buffLog || [])].reverse()) {
+    if (!REPEATABLE_BUFF_NAMES.has(entry.name) || seen.has(entry.name)) continue;
+    seen.add(entry.name);
+    if (entry.type === "plant") {
+      const plant = entry.target;
+      const buff = findPlantBuff(plant, entry.name);
+      if (!buff) continue;
+      next.plantMods = { ...next.plantMods, [plant]: buff.fn(next.plantMods[plant] || {}) };
+      echoed.push({ name: `Evergreen Echo: ${entry.name}`, desc: `Repeated ${plantDefs[plant]?.name || plant} buff: ${buff.desc}`, rarity: "Legendary", type: "global", target: plant });
+    } else if (entry.type === "global") {
+      const buff = findGlobalBuff(entry.name);
+      if (!buff || buff.name === "Evergreen Drafts") continue;
+      next = buff.fn(next);
+      echoed.push({ name: `Evergreen Echo: ${entry.name}`, desc: `Repeated global buff: ${buff.desc}`, rarity: "Legendary", type: "global", target: "Global" });
+    }
+  }
+  return { ...next, buffLog: [...echoed, ...next.buffLog] };
+}
+
+function applyMissingBuffsForPlant(state, plant) {
+  let mods = state.plantMods[plant] || {};
+  const already = new Set((state.perPlantBuffNames && state.perPlantBuffNames[plant]) || []);
+  const wasMaxed = isPlantMaxBuffed(state, plant);
+  const gained = [];
+  for (const [name, desc, fn] of plantBuffs[plant] || []) {
+    if (!already.has(name)) {
+      mods = fn(mods);
+      gained.push({ name, desc, rarity: rarityForBuff(name), type: "plant", target: plant });
+      already.add(name);
+    }
+  }
+  const next = {
+    ...state,
+    plantMods: { ...state.plantMods, [plant]: mods },
+    perPlantBuffNames: { ...(state.perPlantBuffNames || {}), [plant]: [...already] },
+    pickedBuffNames: [...new Set([...(state.pickedBuffNames || []), ...gained.map(g => g.name)])],
+    buffLog: [...gained.map(g => ({ name: g.name, desc: g.desc, rarity: g.rarity, type: "plant", target: g.target })), ...state.buffLog],
+  };
+  if (!wasMaxed && isPlantMaxBuffed(next, plant)) {
+    return {
+      ...next,
+      buffLog: [{ name: `${plantDefs[plant].name} Max Buffed!`, desc: `You have every ${plantDefs[plant].name} buff.`, rarity: "Legendary", type: "global", target: plant }, ...next.buffLog],
+    };
+  }
+  return next;
+}
+
+function createPlant(type, row, col, state) {
+  const stats = applyPlantStats(type, state.plantMods, state);
+  return {
+    id: makeId("plant"),
+    type,
+    row,
+    col,
+    hp: stats.hp,
+    maxHp: stats.hp,
+    cd: type === "chomper" && stats.mods.instantFirstBite ? 0 : Math.random() * 0.5,
+    chewMax: type === "chomper" ? stats.biteCd : 0,
+    timer: 0,
+    bloomCount: 0,
+    shotCount: 0,
+    punchCount: 0,
+    spinTimer: 0,
+    spinTime: 0,
+    spinTick: 0,
+    fuse: stats.fuse,
+    panicUsed: false,
+    knocked: false,
+  };
+}
+
+function createZombie(state, forcedType = null, row = null, x = null) {
+  const unlocked = Object.entries(zombieDefs).filter(([, z]) => z.unlock <= state.buffCount);
+  const type = forcedType || pickWeighted(unlocked.map(([key, z]) => ({ item: key, weight: 1 / Math.max(1, z.points) })));
+  const stats = applyZombieStats(type, state);
+  return {
+    id: makeId("zombie"),
+    type,
+    row: row ?? Math.floor(Math.random() * ROWS),
+    x: x ?? BOARD_W + 30,
+    hp: stats.hp,
+    maxHp: stats.hp,
+    speed: stats.speed,
+    damage: stats.damage,
+    points: stats.points,
+    flying: stats.flying,
+    groundedAir: stats.groundedAir,
+    slow: 0,
+    stun: 0,
+    poison: 0,
+    eatCd: 0,
+    throwCd: type === "gargantuar" ? 7 + Math.random() * 3 : 0,
+  };
+}
+
+function createKaleImp(row, x) {
+  return { id: makeId("kale"), type: "kaleimp", row, x, hp: 150, maxHp: 150, speed: 42, damage: 35, cd: 0, eatCd: 0, icon: "🟢👺" };
+}
+
+function healthPct(entity) {
+  return clamp((entity.hp / Math.max(1, entity.maxHp)) * 100, 0, 100);
+}
+
+function SpriteFrame({ children, small = false, action = "idle", className = "" }) {
+  const size = small ? 24 : 50;
+  const bob = action === "walk" ? [0, -2, 0, 1, 0] : action === "attack" || action === "chew" ? [0, 1.5, 0] : [0, -1, 0];
+  const squash = action === "attack" || action === "chew" ? [1, 1.08, 0.96, 1] : [1, 1.02, 1];
+  return (
+    <motion.svg
+      width={size}
+      height={size}
+      viewBox="0 0 64 64"
+      className={`overflow-visible drop-shadow-[0_3px_3px_rgba(0,0,0,0.45)] ${className}`}
+      initial={false}
+      animate={{ y: bob, scaleY: squash }}
+      transition={{ duration: action === "walk" ? 0.55 : action === "attack" || action === "chew" ? 0.32 : 1.7, repeat: Infinity, ease: "easeInOut" }}
+    >
+      {children}
+    </motion.svg>
+  );
+}
+
+function SpriteEye({ cx, cy, sleepy = false }) {
+  return sleepy ? <path d={`M${cx - 3} ${cy} Q${cx} ${cy - 2} ${cx + 3} ${cy}`} stroke="#102017" strokeWidth="2" fill="none" strokeLinecap="round" /> : <circle cx={cx} cy={cy} r="2.2" fill="#102017" />;
+}
+
+function CuteFace({ y = 29, mood = "idle" }) {
+  const mouth = mood === "attack" ? "M25 40 Q32 47 39 40" : mood === "chew" ? "M25 41 Q32 36 39 41" : "M26 39 Q32 42 38 39";
+  return (
+    <g>
+      <SpriteEye cx={26} cy={y} />
+      <SpriteEye cx={38} cy={y} />
+      <path d={mouth} stroke="#102017" strokeWidth="2.8" fill="none" strokeLinecap="round" />
+      <circle cx="23" cy={y + 5} r="2" fill="#ffffff" opacity="0.25" />
+      <circle cx="41" cy={y + 5} r="2" fill="#ffffff" opacity="0.25" />
+    </g>
+  );
+}
+
+function LeafShadow() {
+  return <ellipse cx="32" cy="58" rx="18" ry="4" fill="#102017" opacity="0.25" />;
+}
+
+function PlantSprite({ type, action = "idle", small = false }) {
+  const fast = action === "attack" || action === "chew" || action === "spin";
+  const common = { small, action: fast ? "attack" : "idle" };
+
+  if (type === "peashooter") return (
+    <SpriteFrame {...common}>
+      <LeafShadow />
+      <motion.g
+        animate={fast ? { x: [0, 3, -1, 0], scaleX: [1, 1.08, 0.98, 1] } : { rotate: [-1.5, 1.5, -1.5] }}
+        transition={{ duration: fast ? 0.24 : 1.55, repeat: Infinity }}
+        style={{ transformOrigin: "30px 50px" }}
+      >
+        <defs>
+          <radialGradient id="peaHead" cx="35%" cy="25%" r="70%">
+            <stop offset="0" stopColor="#d7ff75" />
+            <stop offset="0.45" stopColor="#8de63e" />
+            <stop offset="1" stopColor="#3aa92f" />
+          </radialGradient>
+          <linearGradient id="peaStem" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="#9df24f" />
+            <stop offset="1" stopColor="#2e9a2e" />
+          </linearGradient>
+          <radialGradient id="peaSnout" cx="35%" cy="30%" r="70%">
+            <stop offset="0" stopColor="#cfff65" />
+            <stop offset="0.65" stopColor="#6fd339" />
+            <stop offset="1" stopColor="#267f24" />
+          </radialGradient>
+        </defs>
+
+        <path d="M29 54 C25 43 25 34 32 27" fill="none" stroke="url(#peaStem)" strokeWidth="7" strokeLinecap="round" />
+        <path d="M23 53 C16 45 7 47 4 58 C11 61 21 60 28 55 Z" fill="#6bd93b" stroke="#1c7b26" strokeWidth="2" />
+        <path d="M31 55 C38 45 49 48 54 58 C45 62 35 61 29 56 Z" fill="#72dc3f" stroke="#1c7b26" strokeWidth="2" />
+        <path d="M26 53 C24 47 19 44 14 43 C20 41 27 44 31 52 Z" fill="#4fbd31" opacity="0.8" />
+
+        <path d="M18 18 C12 9 7 7 3 8 C9 13 9 22 5 29 C13 28 20 24 23 18 Z" fill="#43b83b" stroke="#126e25" strokeWidth="2" />
+        <path d="M8 10 C13 13 17 16 21 18" stroke="#a8ff78" strokeWidth="2" opacity="0.55" fill="none" strokeLinecap="round" />
+
+        <ellipse cx="32" cy="25" rx="22" ry="18" fill="url(#peaHead)" stroke="#2b8b2e" strokeWidth="2.5" />
+        <ellipse cx="24" cy="18" rx="8" ry="6" fill="#eaff9a" opacity="0.65" />
+
+        <g>
+          <ellipse cx="50" cy="27" rx="13" ry="12" fill="url(#peaSnout)" stroke="#236f25" strokeWidth="2.5" />
+          <ellipse cx="54" cy="28" rx="8" ry="8" fill="#0f2414" />
+          <ellipse cx="51" cy="25" rx="3" ry="2" fill="#d8ff90" opacity="0.45" />
+        </g>
+
+        <g>
+          <ellipse cx="27" cy="19" rx="4.5" ry="6" fill="#102017" />
+          <ellipse cx="39" cy="20" rx="4.5" ry="6" fill="#102017" />
+          <circle cx="25.5" cy="17" r="1.5" fill="#fff" />
+          <circle cx="37.5" cy="18" r="1.5" fill="#fff" />
+        </g>
+      </motion.g>
+    </SpriteFrame>
+  );
+
+  if (type === "sunflower") return (
+    <SpriteFrame {...common}>
+      <LeafShadow />
+      <motion.g
+        animate={{ rotate: [0, 3, 0, -3, 0], scale: [1, 1.02, 1] }}
+        transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
+        style={{ transformOrigin: "32px 28px" }}
+      >
+        <defs>
+          <radialGradient id="sunFace" cx="36%" cy="28%" r="72%">
+            <stop offset="0" stopColor="#ffd66a" />
+            <stop offset="0.48" stopColor="#e8942d" />
+            <stop offset="1" stopColor="#9d551e" />
+          </radialGradient>
+          <linearGradient id="sunPetal" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="#fff589" />
+            <stop offset="0.55" stopColor="#ffe064" />
+            <stop offset="1" stopColor="#e5aa32" />
+          </linearGradient>
+          <linearGradient id="sunStem" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="#73d14a" />
+            <stop offset="1" stopColor="#257f32" />
+          </linearGradient>
+        </defs>
+
+        <g stroke="#9f7a1f" strokeWidth="1.6">
+          {Array.from({ length: 14 }).map((_, i) => (
+            <ellipse
+              key={i}
+              cx="32"
+              cy="28"
+              rx="5.8"
+              ry="13.5"
+              fill="url(#sunPetal)"
+              transform={`rotate(${i * 25.714} 32 28) translate(0 -15.5)`}
+            />
+          ))}
+        </g>
+
+        <circle cx="32" cy="28" r="18" fill="url(#sunFace)" stroke="#704217" strokeWidth="2.6" />
+        <path d="M19 23 C25 14 39 12 47 23" fill="none" stroke="#ffd982" strokeWidth="3" opacity="0.45" strokeLinecap="round" />
+        <path d="M17 33 C25 43 40 43 48 33" fill="none" stroke="#6b3418" strokeWidth="2.2" opacity="0.28" strokeLinecap="round" />
+
+        <g>
+          <ellipse cx="25" cy="24" rx="4.6" ry="7" fill="#0e1a12" />
+          <ellipse cx="40" cy="24" rx="4.6" ry="7" fill="#0e1a12" />
+          <circle cx="23.4" cy="21.5" r="1.8" fill="#fff" />
+          <circle cx="38.4" cy="21.5" r="1.8" fill="#fff" />
+          <path d="M18 36 C24 42 41 43 48 36" stroke="#5a2a13" strokeWidth="3" fill="none" strokeLinecap="round" />
+        </g>
+      </motion.g>
+
+      <motion.g
+        animate={{ rotate: [-2, 2, -2] }}
+        transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+        style={{ transformOrigin: "32px 52px" }}
+      >
+        <path d="M32 43 L32 58" stroke="url(#sunStem)" strokeWidth="6" strokeLinecap="round" />
+        <path d="M31 53 C22 45 13 48 10 59 C20 61 28 59 33 54 Z" fill="#4dbb45" stroke="#176e2a" strokeWidth="2" />
+        <path d="M34 52 C43 44 52 48 55 59 C45 62 37 60 32 54 Z" fill="#5cc64f" stroke="#176e2a" strokeWidth="2" />
+        <path d="M18 54 C23 52 27 53 31 55" stroke="#a3ff82" strokeWidth="2" opacity="0.45" fill="none" />
+        <path d="M40 54 C45 52 49 53 53 57" stroke="#a3ff82" strokeWidth="2" opacity="0.45" fill="none" />
+      </motion.g>
+    </SpriteFrame>
+  );
+
+  if (type === "wallnut") return (
+    <SpriteFrame {...common}>
+      <LeafShadow />
+      <motion.g
+        animate={action === "hurt" ? { x: [-2, 2, -1, 1, 0], rotate: [-2, 2, -1, 1, 0] } : { rotate: [-1.2, 1.2, -1.2], y: [0, -0.5, 0] }}
+        transition={{ duration: action === "hurt" ? 0.25 : 1.7, repeat: Infinity, ease: "easeInOut" }}
+        style={{ transformOrigin: "32px 36px" }}
+      >
+        <defs>
+          <radialGradient id="walnutMain" cx="42%" cy="25%" r="78%">
+            <stop offset="0" stopColor="#ffd36c" />
+            <stop offset="0.42" stopColor="#d8942c" />
+            <stop offset="1" stopColor="#8f511b" />
+          </radialGradient>
+          <linearGradient id="walnutSide" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0" stopColor="#d89a38" />
+            <stop offset="1" stopColor="#7a4218" />
+          </linearGradient>
+          <linearGradient id="walnutRidge" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stopColor="#f3bf62" />
+            <stop offset="1" stopColor="#9a5b1e" />
+          </linearGradient>
+        </defs>
+
+        <path
+          d="M18 14 C11 19 7 29 8 39 C9 51 17 60 29 61 C22 54 19 44 19 35 C19 25 23 18 31 10 C26 9 21 10 18 14 Z"
+          fill="url(#walnutSide)"
+          stroke="#5f3516"
+          strokeWidth="2.3"
+        />
+        <path
+          d="M29 8 C17 12 12 24 13 38 C14 52 24 62 36 61 C49 60 56 48 55 34 C54 20 43 8 29 8 Z"
+          fill="url(#walnutMain)"
+          stroke="#6e3e17"
+          strokeWidth="2.6"
+        />
+
+        <path d="M24 10 C18 18 18 27 19 36 C20 47 26 56 35 60" fill="none" stroke="#f0b957" strokeWidth="3" opacity="0.5" strokeLinecap="round" />
+        <path d="M18 18 C26 16 32 12 39 16" fill="none" stroke="#8a4d1b" strokeWidth="2.2" opacity="0.35" strokeLinecap="round" />
+        <path d="M17 27 C24 24 32 24 38 28" fill="none" stroke="#8a4d1b" strokeWidth="2" opacity="0.35" strokeLinecap="round" />
+        <path d="M21 50 C28 47 36 48 45 53" fill="none" stroke="#7b4218" strokeWidth="2.4" opacity="0.45" strokeLinecap="round" />
+
+        <g fill="none" stroke="#9b5b20" strokeWidth="2.4" opacity="0.55" strokeLinecap="round">
+          <path d="M24 45 C28 42 31 43 34 47" />
+          <path d="M34 47 C38 42 43 43 47 48" />
+          <path d="M22 55 C27 51 32 52 36 57" />
+          <path d="M36 57 C41 52 47 52 51 56" />
+        </g>
+
+        <g fill="url(#walnutRidge)" stroke="#6d3c17" strokeWidth="1.5" opacity="0.75">
+          <path d="M14 20 C18 18 20 22 18 27 C14 28 12 24 14 20 Z" />
+          <path d="M13 31 C18 29 20 34 18 39 C14 40 11 36 13 31 Z" />
+          <path d="M15 43 C20 42 22 47 19 52 C15 52 12 48 15 43 Z" />
+        </g>
+
+        <g>
+          <ellipse cx="27" cy="29" rx="7" ry="8.5" fill="#fff8c8" stroke="#5e3717" strokeWidth="1.8" />
+          <ellipse cx="43" cy="29" rx="7" ry="8.5" fill="#fff8c8" stroke="#5e3717" strokeWidth="1.8" />
+          <circle cx="29" cy="29" r="1.7" fill="#17110b" />
+          <circle cx="41" cy="29" r="1.7" fill="#17110b" />
+          <path d="M31 42 C34 45 39 45 42 41" fill="none" stroke="#5a2e13" strokeWidth="2" strokeLinecap="round" />
+          <path d="M33 37 Q35 39 37 37" fill="none" stroke="#5a2e13" strokeWidth="1.7" strokeLinecap="round" opacity="0.7" />
+        </g>
+      </motion.g>
+    </SpriteFrame>
+  );
+
+  if (type === "tallnut") return (
+    <SpriteFrame {...common}>
+      <LeafShadow />
+      <motion.g
+        animate={action === "hurt" ? { x: [-2, 2, -1, 1, 0], rotate: [-1.2, 1.2, 0] } : { rotate: [-0.45, 0.45, -0.45], y: [0, -0.6, 0] }}
+        transition={{ duration: action === "hurt" ? 0.22 : 1.9, repeat: Infinity, ease: "easeInOut" }}
+        style={{ transformOrigin: "33px 38px" }}
+      >
+        <defs>
+          <radialGradient id="tallnutMain" cx="46%" cy="18%" r="86%">
+            <stop offset="0" stopColor="#ffd76e" />
+            <stop offset="0.38" stopColor="#d8942c" />
+            <stop offset="1" stopColor="#864817" />
+          </radialGradient>
+          <linearGradient id="tallnutSide" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0" stopColor="#d89b3a" />
+            <stop offset="1" stopColor="#704018" />
+          </linearGradient>
+          <linearGradient id="tallnutRidge" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stopColor="#f5c66a" />
+            <stop offset="1" stopColor="#8e521c" />
+          </linearGradient>
+        </defs>
+
+        <path
+          d="M16 6 C10 11 8 22 8 39 C8 57 16 67 31 68 C23 60 20 48 20 35 C20 20 23 9 32 3 C26 2 20 3 16 6 Z"
+          fill="url(#tallnutSide)"
+          stroke="#5b3215"
+          strokeWidth="2.4"
+        />
+        <path
+          d="M30 1 C18 2 13 10 13 27 L13 49 C13 62 22 69 37 68 C50 67 55 59 55 48 L55 26 C55 10 45 1 30 1 Z"
+          fill="url(#tallnutMain)"
+          stroke="#6a3a16"
+          strokeWidth="2.7"
+        />
+
+        <path d="M24 4 C18 16 18 33 20 49 C21 59 27 65 35 67" fill="none" stroke="#f1bb56" strokeWidth="3" opacity="0.5" strokeLinecap="round" />
+        <path d="M27 5 C35 3 44 6 49 13" fill="none" stroke="#8c4e1b" strokeWidth="2.1" opacity="0.38" strokeLinecap="round" />
+        <path d="M21 15 C28 12 37 12 45 16" fill="none" stroke="#8c4e1b" strokeWidth="2" opacity="0.34" strokeLinecap="round" />
+        <path d="M19 56 C28 53 40 54 48 60" fill="none" stroke="#7a4218" strokeWidth="2.5" opacity="0.42" strokeLinecap="round" />
+
+        <g fill="none" stroke="#9c5b20" strokeWidth="2.4" opacity="0.5" strokeLinecap="round">
+          <path d="M21 44 C27 40 33 41 37 46" />
+          <path d="M36 46 C41 41 47 42 50 48" />
+          <path d="M22 57 C27 53 34 54 38 60" />
+          <path d="M37 60 C42 54 49 55 52 60" />
+        </g>
+
+        <g fill="url(#tallnutRidge)" stroke="#6a3a16" strokeWidth="1.5" opacity="0.82">
+          <path d="M14 12 C19 10 21 15 18 21 C14 22 11 17 14 12 Z" />
+          <path d="M13 24 C18 22 21 27 18 33 C14 34 11 29 13 24 Z" />
+          <path d="M13 37 C18 35 21 40 18 46 C14 47 11 42 13 37 Z" />
+          <path d="M15 50 C20 49 22 54 19 59 C15 59 12 55 15 50 Z" />
+        </g>
+
+        <g>
+          <path d="M22 22 Q29 18 36 21" stroke="#44250f" strokeWidth="3" fill="none" strokeLinecap="round" />
+          <path d="M37 21 Q45 17 51 21" stroke="#44250f" strokeWidth="3" fill="none" strokeLinecap="round" />
+          <path d="M23 27 Q29 24 36 26 Q30 30 23 27 Z" fill="#fff5bb" stroke="#5c3515" strokeWidth="1.6" />
+          <path d="M38 26 Q45 23 52 26 Q46 30 38 26 Z" fill="#fff5bb" stroke="#5c3515" strokeWidth="1.6" />
+          <circle cx="30" cy="27" r="1.45" fill="#17110b" />
+          <circle cx="45" cy="26.8" r="1.45" fill="#17110b" />
+          <path d="M29 41 C33 38 39 38 43 41" stroke="#4f2911" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+          <path d="M35 35 Q36 37 38 35" stroke="#5a2f13" strokeWidth="1.5" fill="none" opacity="0.8" />
+          <path d="M32 17 L32 11" stroke="#5a2f13" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M41 17 L42 11" stroke="#5a2f13" strokeWidth="1.6" strokeLinecap="round" />
+        </g>
+      </motion.g>
+    </SpriteFrame>
+  );
+
+  if (type === "chomper") return (
+    <SpriteFrame small={small} action={action === "chew" ? "chew" : "idle"}>
+      {/* Base leaves */}
+      <motion.g
+        animate={{ rotate: [-2, 2, -2] }}
+        transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+        style={{ transformOrigin: "32px 56px" }}
+      >
+        <defs>
+          <radialGradient id="chompHeadGrad" cx="38%" cy="22%" r="78%">
+            <stop offset="0" stopColor="#e06aff" />
+            <stop offset="0.42" stopColor="#a020c8" />
+            <stop offset="0.78" stopColor="#6b0f9a" />
+            <stop offset="1" stopColor="#3d0760" />
+          </radialGradient>
+          <linearGradient id="chompStemGrad" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="#7a28b8" />
+            <stop offset="1" stopColor="#3a0870" />
+          </linearGradient>
+          <radialGradient id="chompLeafGrad" cx="35%" cy="22%" r="75%">
+            <stop offset="0" stopColor="#aaff70" />
+            <stop offset="0.5" stopColor="#44cc38" />
+            <stop offset="1" stopColor="#146e22" />
+          </radialGradient>
+          <radialGradient id="chompInnerMouth" cx="50%" cy="30%" r="70%">
+            <stop offset="0" stopColor="#cc1a2e" />
+            <stop offset="1" stopColor="#5a0010" />
+          </radialGradient>
+        </defs>
+
+        {/* Thick purple stem */}
+        <path
+          d="M32 58 C28 48 27 38 30 26"
+          fill="none"
+          stroke="url(#chompStemGrad)"
+          strokeWidth="9"
+          strokeLinecap="round"
+        />
+
+        {/* Left base leaf */}
+        <path
+          d="M26 55 C14 48 6 52 4 62 C14 65 24 62 30 57 Z"
+          fill="url(#chompLeafGrad)"
+          stroke="#0d6020"
+          strokeWidth="1.8"
+        />
+        {/* Right base leaf */}
+        <path
+          d="M36 54 C46 46 56 50 58 61 C47 65 37 62 32 56 Z"
+          fill="url(#chompLeafGrad)"
+          stroke="#0d6020"
+          strokeWidth="1.8"
+        />
+        {/* Small front leaf */}
+        <path
+          d="M29 52 C22 44 14 47 12 56 C20 58 28 56 31 51 Z"
+          fill="#3ab83a"
+          stroke="#0d6020"
+          strokeWidth="1.6"
+        />
+
+        {/* Main round head */}
+        <motion.g
+          animate={action === "chew" ? { scaleY: [1, 0.92, 1.05, 1] } : { scaleY: [1, 1.02, 1], y: [0, -1, 0] }}
+          transition={{ duration: action === "chew" ? 0.22 : 1.8, repeat: Infinity, ease: "easeInOut" }}
+          style={{ transformOrigin: "32px 24px" }}
+        >
+          {/* Head sphere */}
+          <ellipse cx="32" cy="24" rx="26" ry="24" fill="url(#chompHeadGrad)" stroke="#290550" strokeWidth="2.5" />
+          {/* Sheen highlight */}
+          <ellipse cx="22" cy="14" rx="9" ry="6" fill="#f0aaff" opacity="0.28" />
+
+          {/* Green horns on top */}
+          <path d="M22 4 C20 -4 26 -6 27 2 C26 5 24 6 22 4 Z" fill="#44cc38" stroke="#0d6020" strokeWidth="1.6" />
+          <path d="M38 2 C40 -6 46 -4 44 4 C42 6 40 5 38 2 Z" fill="#44cc38" stroke="#0d6020" strokeWidth="1.6" />
+          {/* Horn highlights */}
+          <path d="M23 1 C24 -2 26 -4 27 1" stroke="#aaff70" strokeWidth="1.2" fill="none" opacity="0.6" strokeLinecap="round" />
+          <path d="M40 0 C41 -3 43 -3 44 2" stroke="#aaff70" strokeWidth="1.2" fill="none" opacity="0.6" strokeLinecap="round" />
+
+          {/* Eyes — big cartoony on upper head */}
+          <ellipse cx="21" cy="16" rx="5.5" ry="6.5" fill="#f5f0d0" stroke="#1a0330" strokeWidth="1.8" />
+          <ellipse cx="42" cy="15" rx="5.5" ry="6.5" fill="#f5f0d0" stroke="#1a0330" strokeWidth="1.8" />
+          <circle cx="22" cy="17" r="2.8" fill="#0d0d1a" />
+          <circle cx="43" cy="16" r="2.8" fill="#0d0d1a" />
+          {/* Eye sheen */}
+          <circle cx="20" cy="14.5" r="1.2" fill="#fff" />
+          <circle cx="41" cy="13.5" r="1.2" fill="#fff" />
+
+          {/* The big mouth — lower half of head */}
+          {/* Upper lip arc */}
+          <motion.path
+            d={action === "chew"
+              ? "M8 26 C14 18 50 18 56 26"
+              : "M8 26 C14 22 50 22 56 26"}
+            fill="none"
+            stroke="#1a0330"
+            strokeWidth="3.5"
+            strokeLinecap="round"
+          />
+          {/* Mouth cavity */}
+          <motion.path
+            d={action === "chew"
+              ? "M8 26 C14 18 50 18 56 26 C52 44 16 44 8 26 Z"
+              : "M8 26 C14 22 50 22 56 26 C52 40 16 40 8 26 Z"}
+            fill="url(#chompInnerMouth)"
+            stroke="#1a0330"
+            strokeWidth="2"
+            animate={action === "chew"
+              ? { scaleY: [1, 1.18, 0.88, 1], scaleX: [1, 1.04, 0.98, 1] }
+              : { scaleY: [1, 1.04, 1] }}
+            transition={{ duration: action === "chew" ? 0.2 : 1.6, repeat: Infinity }}
+            style={{ transformOrigin: "32px 33px" }}
+          />
+          {/* Tongue */}
+          <motion.ellipse
+            cx="32" cy={action === "chew" ? 36 : 35}
+            rx="10" ry="4"
+            fill="#e0304a"
+            animate={action === "chew" ? { ry: [4, 5.5, 3.5, 4] } : { ry: [4, 4.5, 4] }}
+            transition={{ duration: action === "chew" ? 0.2 : 1.8, repeat: Infinity }}
+          />
+
+          {/* Top teeth row (on upper lip, pointing down) */}
+          <motion.g
+            animate={action === "chew" ? { y: [0, -3, 1, 0] } : { y: 0 }}
+            transition={{ duration: action === "chew" ? 0.2 : 1, repeat: Infinity }}
+          >
+            {[10, 17, 24, 31, 38, 45].map((x, i) => (
+              <path
+                key={`ut${i}`}
+                d={`M${x} 26 L${x + 3} 33 L${x + 6} 26`}
+                fill="#f8f4dc"
+                stroke="#3a2a10"
+                strokeWidth="1"
+              />
+            ))}
+          </motion.g>
+
+          {/* Bottom teeth row (pointing up) */}
+          <motion.g
+            animate={action === "chew" ? { y: [0, 3, -1, 0] } : { y: 0 }}
+            transition={{ duration: action === "chew" ? 0.2 : 1, repeat: Infinity }}
+          >
+            {[10, 17, 24, 31, 38, 45].map((x, i) => (
+              <path
+                key={`bt${i}`}
+                d={`M${x} 40 L${x + 3} 33 L${x + 6} 40`}
+                fill="#f8f4dc"
+                stroke="#3a2a10"
+                strokeWidth="1"
+              />
+            ))}
+          </motion.g>
+
+          {/* Outer lip ring over teeth for polish */}
+          <motion.path
+            d={action === "chew"
+              ? "M8 26 C14 18 50 18 56 26"
+              : "M8 26 C14 22 50 22 56 26"}
+            fill="none"
+            stroke="#7a1daa"
+            strokeWidth="4"
+            strokeLinecap="round"
+            opacity="0.7"
+          />
+          <motion.path
+            d={action === "chew"
+              ? "M8 26 C14 44 50 44 56 26"
+              : "M8 26 C14 40 50 40 56 26"}
+            fill="none"
+            stroke="#7a1daa"
+            strokeWidth="4"
+            strokeLinecap="round"
+            opacity="0.7"
+          />
+        </motion.g>
+      </motion.g>
+    </SpriteFrame>
+  );
+
+  if (type === "cherrybomb") return (
+    <SpriteFrame small={small} action="attack">
+      <LeafShadow />
+      <motion.g
+        animate={{ scale: [1, 1.06, 1], rotate: [-2, 2, -2] }}
+        transition={{ duration: 0.48, repeat: Infinity, ease: "easeInOut" }}
+        style={{ transformOrigin: "32px 35px" }}
+      >
+        <defs>
+          <radialGradient id="cherryLeft" cx="35%" cy="25%" r="72%">
+            <stop offset="0" stopColor="#ff6a5d" />
+            <stop offset="0.45" stopColor="#df1f25" />
+            <stop offset="1" stopColor="#8c0d14" />
+          </radialGradient>
+          <radialGradient id="cherryRight" cx="35%" cy="25%" r="72%">
+            <stop offset="0" stopColor="#ff7469" />
+            <stop offset="0.5" stopColor="#d91b22" />
+            <stop offset="1" stopColor="#800b13" />
+          </radialGradient>
+          <linearGradient id="cherryStem" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0" stopColor="#74c842" />
+            <stop offset="1" stopColor="#2f7a2c" />
+          </linearGradient>
+        </defs>
+
+        <motion.g
+          animate={{ rotate: [-5, 5, -5] }}
+          transition={{ duration: 0.7, repeat: Infinity, ease: "easeInOut" }}
+          style={{ transformOrigin: "31px 21px" }}
+        >
+          <path d="M25 23 C26 13 32 8 38 5" fill="none" stroke="url(#cherryStem)" strokeWidth="4" strokeLinecap="round" />
+          <path d="M39 5 C46 2 51 5 54 10 C47 12 42 11 38 6 Z" fill="#49b83c" stroke="#166c26" strokeWidth="1.8" />
+          <path d="M43 6 C47 6 50 8 53 10" stroke="#a7ff7b" strokeWidth="1.5" opacity="0.6" fill="none" />
+        </motion.g>
+
+        <motion.g
+          animate={{ x: [-0.5, 0.8, -0.5], y: [0, -0.5, 0] }}
+          transition={{ duration: 0.42, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <circle cx="24" cy="38" r="15" fill="url(#cherryLeft)" stroke="#740b12" strokeWidth="2.5" />
+          <ellipse cx="18" cy="31" rx="5" ry="4" fill="#ff9b8f" opacity="0.55" />
+
+          <path d="M12.5 35 Q17 31 21 33" stroke="#5b0710" strokeWidth="2.8" fill="none" strokeLinecap="round" />
+          <path d="M22 33 Q27.5 29.5 32 32.5" stroke="#5b0710" strokeWidth="2.8" fill="none" strokeLinecap="round" />
+
+          <path d="M14.8 38 Q17.4 35.4 20.4 36.5 Q17.8 40.1 14.8 38 Z" fill="#f5ead5" stroke="#5b0710" strokeWidth="1.4" />
+          <ellipse cx="17.6" cy="37.7" rx="1.15" ry="1.9" fill="#111" transform="rotate(18 17.6 37.7)" />
+          <path d="M22.1 37.2 Q25.2 34.4 29 35.7 Q25.8 39.7 22.1 37.2 Z" fill="#f5ead5" stroke="#5b0710" strokeWidth="1.4" />
+          <ellipse cx="25.2" cy="36.9" rx="1.2" ry="1.95" fill="#111" transform="rotate(18 25.2 36.9)" />
+
+          <path d="M29 45 Q22 51 15 45" stroke="#3b080b" strokeWidth="3" fill="none" strokeLinecap="round" />
+          <path d="M15 45 L19 43 L20 48 Z" fill="#fff1d9" stroke="#4c1210" strokeWidth="1" />
+        </motion.g>
+
+        <motion.g
+          animate={{ x: [0.5, -0.8, 0.5], y: [0, 0.5, 0] }}
+          transition={{ duration: 0.42, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <circle cx="41" cy="36" r="15" fill="url(#cherryRight)" stroke="#740b12" strokeWidth="2.5" />
+          <ellipse cx="36" cy="28" rx="5" ry="4" fill="#ff9b8f" opacity="0.5" />
+
+          <path d="M30 34 Q35 30 40 32" stroke="#5b0710" strokeWidth="2.8" fill="none" strokeLinecap="round" />
+          <path d="M39.8 32.8 Q45.2 29.2 50 32" stroke="#5b0710" strokeWidth="2.8" fill="none" strokeLinecap="round" />
+
+          <path d="M32.6 37 Q35.2 34.2 38.4 35.2 Q35.9 39.3 32.6 37 Z" fill="#f5ead5" stroke="#5b0710" strokeWidth="1.4" />
+          <ellipse cx="35.6" cy="36.6" rx="1.15" ry="1.95" fill="#111" transform="rotate(18 35.6 36.6)" />
+          <path d="M40.2 36.2 Q43.6 33.2 47.8 34.8 Q44.4 39.1 40.2 36.2 Z" fill="#f5ead5" stroke="#5b0710" strokeWidth="1.4" />
+          <ellipse cx="43.8" cy="36.1" rx="1.2" ry="2" fill="#111" transform="rotate(18 43.8 36.1)" />
+
+          <path d="M34 45 Q42 50 51 42" stroke="#3b080b" strokeWidth="3" fill="none" strokeLinecap="round" />
+          <path d="M49 43 L45 41 L45 48 Z" fill="#fff1d9" stroke="#4c1210" strokeWidth="1" />
+        </motion.g>
+      </motion.g>
+    </SpriteFrame>
+  );
+
+  if (type === "spikeweed") return (
+    <SpriteFrame {...common}>
+      <motion.g
+        animate={fast ? { y: [0, -2.5, 0], scaleY: [1, 1.12, 0.96, 1] } : { y: [0, 0.8, 0] }}
+        transition={{ duration: fast ? 0.22 : 1.6, repeat: Infinity, ease: "easeInOut" }}
+        style={{ transformOrigin: "32px 53px" }}
+      >
+        <defs>
+          <radialGradient id="spikeweedBack" cx="42%" cy="20%" r="80%">
+            <stop offset="0" stopColor="#7dbb49" />
+            <stop offset="0.55" stopColor="#4a8f31" />
+            <stop offset="1" stopColor="#245c22" />
+          </radialGradient>
+          <linearGradient id="spikeweedBelly" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="#6ea43b" />
+            <stop offset="0.6" stopColor="#3f7d2b" />
+            <stop offset="1" stopColor="#1d4f1e" />
+          </linearGradient>
+          <linearGradient id="spikeweedSpike" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="#f8f0bd" />
+            <stop offset="0.6" stopColor="#c6b674" />
+            <stop offset="1" stopColor="#7b764d" />
+          </linearGradient>
+        </defs>
+
+        <ellipse cx="32" cy="56" rx="28" ry="5" fill="#0c2511" opacity="0.32" />
+
+        <path
+          d="M3 45 C7 30 18 21 33 19 C48 18 59 27 62 44 C51 52 18 53 3 45 Z"
+          fill="url(#spikeweedBack)"
+          stroke="#183f18"
+          strokeWidth="2.4"
+        />
+        <path
+          d="M7 44 C18 37 46 36 58 44 C51 50 18 51 7 44 Z"
+          fill="url(#spikeweedBelly)"
+          opacity="0.92"
+        />
+        <path d="M8 37 C21 28 43 27 56 37" stroke="#9ccc5c" strokeWidth="3" opacity="0.42" fill="none" strokeLinecap="round" />
+        <path d="M11 45 C23 48 43 48 55 45" stroke="#173d18" strokeWidth="2" opacity="0.45" fill="none" />
+
+        <motion.g
+          animate={fast ? { y: [0, -3, 0] } : { y: [0, -0.7, 0] }}
+          transition={{ duration: fast ? 0.18 : 1.4, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <path d="M9 36 L15 15 L22 38 Z" fill="url(#spikeweedSpike)" stroke="#59603d" strokeWidth="2" />
+          <path d="M23 27 L31 4 L39 31 Z" fill="url(#spikeweedSpike)" stroke="#59603d" strokeWidth="2" />
+          <path d="M41 29 L49 8 L56 35 Z" fill="url(#spikeweedSpike)" stroke="#59603d" strokeWidth="2" />
+          <path d="M15 16 C17 22 18 30 20 36" stroke="#fff9cf" strokeWidth="2" opacity="0.55" fill="none" strokeLinecap="round" />
+          <path d="M31 5 C33 13 34 22 37 30" stroke="#fff9cf" strokeWidth="2" opacity="0.55" fill="none" strokeLinecap="round" />
+          <path d="M49 9 C51 16 52 25 54 34" stroke="#fff9cf" strokeWidth="2" opacity="0.55" fill="none" strokeLinecap="round" />
+        </motion.g>
+
+        <g>
+          <path d="M10 42 C15 38 21 38 26 42" fill="#cbe56f" stroke="#183f18" strokeWidth="2" />
+          <path d="M38 42 C43 38 50 38 55 42" fill="#cbe56f" stroke="#183f18" strokeWidth="2" />
+          <ellipse cx="18" cy="41" rx="2.1" ry="4" fill="#6d1515" />
+          <ellipse cx="47" cy="41" rx="2.1" ry="4" fill="#6d1515" />
+          <path d="M13 39 C17 36 22 36 26 39" stroke="#102615" strokeWidth="1.8" fill="none" strokeLinecap="round" />
+          <path d="M39 39 C44 36 50 36 55 39" stroke="#102615" strokeWidth="1.8" fill="none" strokeLinecap="round" />
+        </g>
+
+        <g fill="#2d6928" opacity="0.75">
+          <ellipse cx="20" cy="49" rx="4" ry="1.6" />
+          <ellipse cx="31" cy="48" rx="3" ry="1.4" />
+          <ellipse cx="43" cy="49" rx="4" ry="1.6" />
+        </g>
+      </motion.g>
+    </SpriteFrame>
+  );
+
+  if (type === "cactus") return (
+    <SpriteFrame {...common}>
+      <LeafShadow />
+      <motion.g
+        animate={fast ? { x: [0, -2, 3, 0], scaleX: [1, 0.98, 1.05, 1] } : { rotate: [-1, 1, -1] }}
+        transition={{ duration: fast ? 0.2 : 1.8, repeat: Infinity, ease: "easeInOut" }}
+        style={{ transformOrigin: "32px 57px" }}
+      >
+        <defs>
+          <linearGradient id="cactusBody3" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0" stopColor="#e6ff50" />
+            <stop offset="0.32" stopColor="#a8ee3d" />
+            <stop offset="0.7" stopColor="#63c739" />
+            <stop offset="1" stopColor="#228132" />
+          </linearGradient>
+          <linearGradient id="cactusShadow3" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0" stopColor="#83d936" />
+            <stop offset="1" stopColor="#176f2d" />
+          </linearGradient>
+          <radialGradient id="cactusFlower3" cx="38%" cy="24%" r="74%">
+            <stop offset="0" stopColor="#ffad4d" />
+            <stop offset="0.48" stopColor="#d55b22" />
+            <stop offset="1" stopColor="#7b2317" />
+          </radialGradient>
+          <radialGradient id="cactusSnout3" cx="34%" cy="30%" r="72%">
+            <stop offset="0" stopColor="#dfff55" />
+            <stop offset="0.6" stopColor="#7bd53a" />
+            <stop offset="1" stopColor="#1f7930" />
+          </radialGradient>
+        </defs>
+
+        <ellipse cx="32" cy="59" rx="19" ry="4" fill="#4d3219" opacity="0.65" />
+        <g fill="#7a5529" stroke="#4b3218" strokeWidth="1.1">
+          <ellipse cx="17" cy="57" rx="5" ry="3" />
+          <ellipse cx="27" cy="59" rx="5" ry="3" />
+          <ellipse cx="38" cy="59" rx="5" ry="3" />
+          <ellipse cx="48" cy="57" rx="5" ry="3" />
+        </g>
+
+        <motion.g
+          animate={fast ? { rotate: [-9, 7, -9] } : { rotate: [-3, 3, -3] }}
+          transition={{ duration: fast ? 0.16 : 1.35, repeat: Infinity, ease: "easeInOut" }}
+          style={{ transformOrigin: "16px 41px" }}
+        >
+          <path
+            d="M25 40 C18 31 9 34 8 45 C7 55 16 59 23 52 C17 51 17 44 21 42 C24 40 25 44 25 44 Z"
+            fill="url(#cactusShadow3)"
+            stroke="#136229"
+            strokeWidth="2.4"
+          />
+          <path d="M16 37 C13 42 13 49 17 53" stroke="#efff85" strokeWidth="2.4" opacity="0.38" fill="none" strokeLinecap="round" />
+          <g stroke="#df3a2f" strokeWidth="2.3" strokeLinecap="round">
+            <path d="M8 41 L2 39" />
+            <path d="M16 33 L14 26" />
+            <path d="M19 51 L15 58" />
+            <path d="M23 44 L29 41" />
+          </g>
+        </motion.g>
+
+        <motion.g
+          animate={fast ? { rotate: [9, -7, 9] } : { rotate: [3, -3, 3] }}
+          transition={{ duration: fast ? 0.16 : 1.35, repeat: Infinity, ease: "easeInOut" }}
+          style={{ transformOrigin: "49px 41px" }}
+        >
+          <path
+            d="M40 40 C47 31 56 34 57 45 C58 55 49 59 42 52 C48 51 48 44 44 42 C41 40 40 44 40 44 Z"
+            fill="url(#cactusShadow3)"
+            stroke="#136229"
+            strokeWidth="2.4"
+          />
+          <path d="M49 37 C52 42 52 49 48 53" stroke="#efff85" strokeWidth="2.4" opacity="0.38" fill="none" strokeLinecap="round" />
+          <g stroke="#df3a2f" strokeWidth="2.3" strokeLinecap="round">
+            <path d="M57 41 L63 39" />
+            <path d="M49 33 L51 26" />
+            <path d="M46 51 L50 58" />
+            <path d="M42 44 L36 41" />
+          </g>
+        </motion.g>
+
+        <path
+          d="M31 8 C20 9 17 22 18 38 C19 53 25 62 34 61 C44 60 48 49 47 35 C46 20 42 8 31 8 Z"
+          fill="url(#cactusBody3)"
+          stroke="#146428"
+          strokeWidth="2.7"
+        />
+        <path d="M27 12 C25 25 25 44 29 57" stroke="#f4ff88" strokeWidth="4" opacity="0.45" fill="none" strokeLinecap="round" />
+        <path d="M39 13 C42 27 42 44 38 57" stroke="#166f2c" strokeWidth="2.4" opacity="0.4" fill="none" strokeLinecap="round" />
+        <path d="M33 11 C34 25 34 42 33 58" stroke="#4caf32" strokeWidth="1.7" opacity="0.45" fill="none" strokeLinecap="round" />
+
+        <motion.g
+          animate={fast ? { x: [0, 3.5, -1, 0] } : { x: [0, 0.6, 0] }}
+          transition={{ duration: fast ? 0.18 : 1.25, repeat: Infinity, ease: "easeInOut" }}
+          style={{ transformOrigin: "42px 32px" }}
+        >
+          <ellipse cx="42" cy="32" rx="7" ry="7.8" fill="#5fc43a" stroke="#146428" strokeWidth="2" />
+          <ellipse cx="48" cy="32" rx="11" ry="9" fill="url(#cactusSnout3)" stroke="#146428" strokeWidth="2.4" />
+          <ellipse cx="53" cy="32" rx="5.7" ry="5.2" fill="#132f19" />
+          <ellipse cx="49" cy="29" rx="2.3" ry="1.4" fill="#edff83" opacity="0.5" />
+        </motion.g>
+
+        <g stroke="#df3a2f" strokeWidth="2.35" strokeLinecap="round">
+          <path d="M19 23 L11 20" />
+          <path d="M44 22 L53 18" />
+          <path d="M19 44 L12 47" />
+          <path d="M44 45 L52 49" />
+          <path d="M31 17 L31 9" />
+          <path d="M33 51 L34 59" />
+          <path d="M24 34 L17 34" />
+          <path d="M39 37 L46 39" />
+        </g>
+
+        <g>
+          <path d="M21 27 C27 23 34 24 39 28" stroke="#26310f" strokeWidth="3.2" fill="none" strokeLinecap="round" />
+          <path d="M36 27 C42 23.5 48 24.5 52 28.5" stroke="#26310f" strokeWidth="3.2" fill="none" strokeLinecap="round" />
+          <path d="M22 31 C27 27 35 28 39 32 C34 34 27 34 22 31 Z" fill="#dbe874" stroke="#25320f" strokeWidth="2" />
+          <path d="M37 31 C42 27.5 48 28.5 52 32 C47 34 42 34 37 31 Z" fill="#dbe874" stroke="#25320f" strokeWidth="2" />
+          <ellipse cx="31" cy="31" rx="1.5" ry="3.6" fill="#8e1b1b" />
+          <ellipse cx="45" cy="31.5" rx="1.4" ry="3.3" fill="#8e1b1b" />
+          <path d="M26 39 C31 37.5 37 37.5 42 39" stroke="#26310f" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity="0.55" />
+        </g>
+
+        <motion.g
+          animate={{ rotate: [-7, 6, -7] }}
+          transition={{ duration: 1.15, repeat: Infinity, ease: "easeInOut" }}
+          style={{ transformOrigin: "32px 8px" }}
+        >
+          <path d="M22 8 C24 1 29 2 32 8 C35 1 41 2 42 9 C39 14 29 14 22 8 Z" fill="url(#cactusFlower3)" stroke="#742016" strokeWidth="1.8" />
+          <path d="M20 8 C16 3 20 -1 25 3 C25 7 23 9 20 8 Z" fill="url(#cactusFlower3)" stroke="#742016" strokeWidth="1.6" />
+          <path d="M43 8 C48 3 52 8 48 13 C45 12 43 10 43 8 Z" fill="url(#cactusFlower3)" stroke="#742016" strokeWidth="1.6" />
+          <circle cx="26" cy="-1" r="2" fill="#ffc43b" stroke="#7b4213" strokeWidth="1" />
+          <circle cx="32" cy="-4" r="2" fill="#ffc43b" stroke="#7b4213" strokeWidth="1" />
+          <circle cx="38" cy="-1" r="2" fill="#ffc43b" stroke="#7b4213" strokeWidth="1" />
+          <path d="M26 1 L27 7 M32 -2 L32 7 M38 1 L37 8" stroke="#7b4213" strokeWidth="1.5" strokeLinecap="round" />
+        </motion.g>
+      </motion.g>
+    </SpriteFrame>
+  );
+
+  if (type === "cabbagepult") return (
+    <SpriteFrame {...common}>
+      <LeafShadow />
+      <motion.g
+        animate={fast ? { rotate: [-5, 8, -3], y: [0, -2, 0] } : { rotate: [-1.5, 1.5, -1.5] }}
+        transition={{ duration: fast ? 0.34 : 1.6, repeat: Infinity }}
+        style={{ transformOrigin: "31px 52px" }}
+      >
+        <defs>
+          <radialGradient id="cabBody" cx="38%" cy="25%" r="72%">
+            <stop offset="0" stopColor="#caff83" />
+            <stop offset="0.45" stopColor="#75d64b" />
+            <stop offset="1" stopColor="#2b8f3b" />
+          </radialGradient>
+          <radialGradient id="cabHead" cx="40%" cy="25%" r="72%">
+            <stop offset="0" stopColor="#e4ffb1" />
+            <stop offset="0.55" stopColor="#79d856" />
+            <stop offset="1" stopColor="#2b8b44" />
+          </radialGradient>
+          <linearGradient id="cabStem" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0" stopColor="#174f32" />
+            <stop offset="1" stopColor="#2d7d45" />
+          </linearGradient>
+          <radialGradient id="cabAmmo" cx="38%" cy="25%" r="70%">
+            <stop offset="0" stopColor="#d8ff91" />
+            <stop offset="0.55" stopColor="#76d654" />
+            <stop offset="1" stopColor="#2a8842" />
+          </radialGradient>
+        </defs>
+
+        <path d="M21 54 C14 47 7 50 4 59 C13 61 21 59 27 55 Z" fill="#3fae58" stroke="#1f703a" strokeWidth="2" />
+        <path d="M30 56 C35 47 45 48 52 58 C43 62 34 61 28 56 Z" fill="#45b95e" stroke="#1f703a" strokeWidth="2" />
+        <path d="M24 55 C25 45 26 37 31 31" fill="none" stroke="url(#cabStem)" strokeWidth="7" strokeLinecap="round" />
+        <path d="M33 30 C40 18 48 10 54 7" fill="none" stroke="url(#cabStem)" strokeWidth="6" strokeLinecap="round" />
+
+        <motion.g
+          animate={fast ? { rotate: [-10, 22, -8], y: [0, -4, 0] } : { rotate: [-3, 3, -3] }}
+          transition={{ duration: fast ? 0.34 : 1.7, repeat: Infinity }}
+          style={{ transformOrigin: "45px 13px" }}
+        >
+          <circle cx="50" cy="11" r="12" fill="url(#cabAmmo)" stroke="#1f7238" strokeWidth="2.2" />
+          <path d="M40 12 C44 4 52 1 60 8 C55 9 53 15 51 21 C47 17 43 16 40 12 Z" fill="#9be36e" stroke="#2b8140" strokeWidth="2" />
+          <path d="M44 19 C52 18 57 15 60 8" fill="none" stroke="#e8ffc2" strokeWidth="2" opacity="0.45" />
+          <path d="M44 9 C48 13 52 15 57 15" fill="none" stroke="#357f3f" strokeWidth="1.6" opacity="0.65" />
+        </motion.g>
+
+        <g>
+          <path d="M16 33 C14 22 21 13 32 12 C45 11 54 20 53 33 C52 47 42 56 30 55 C20 54 13 45 16 33 Z" fill="url(#cabBody)" stroke="#1e7538" strokeWidth="2.5" />
+          <path d="M17 34 C24 25 38 24 51 31 C47 43 38 51 27 51 C20 49 16 42 17 34 Z" fill="#8de05d" opacity="0.9" />
+          <path d="M19 31 C24 16 41 14 50 28" fill="none" stroke="#dcffab" strokeWidth="3" opacity="0.55" strokeLinecap="round" />
+          <path d="M18 39 C27 35 37 37 48 44" fill="none" stroke="#236d3c" strokeWidth="2" opacity="0.45" />
+          <path d="M23 20 C20 14 25 8 33 10 C31 15 28 18 23 20 Z" fill="#8dde64" stroke="#28733e" strokeWidth="1.8" />
+          <path d="M38 16 C38 8 47 6 52 13 C47 15 43 17 38 16 Z" fill="#7ed65c" stroke="#28733e" strokeWidth="1.8" />
+          <path d="M14 38 C8 36 7 30 12 26 C14 31 16 34 20 36 Z" fill="#66c65e" stroke="#24723d" strokeWidth="1.8" />
+          <path d="M31 55 C30 49 34 45 41 43 C41 50 37 55 31 55 Z" fill="#3fae58" stroke="#24723d" strokeWidth="1.6" />
+        </g>
+
+        <g>
+          <ellipse cx="35" cy="35" rx="4" ry="6" fill="#101c13" />
+          <ellipse cx="46" cy="36" rx="4" ry="6" fill="#101c13" />
+          <circle cx="33.6" cy="32.7" r="1.4" fill="#fff" />
+          <circle cx="44.6" cy="33.7" r="1.4" fill="#fff" />
+          <path d="M29 29 Q34 25 39 29" stroke="#2d6735" strokeWidth="2" fill="none" strokeLinecap="round" />
+          <path d="M42 29 Q48 26 52 31" stroke="#2d6735" strokeWidth="2" fill="none" strokeLinecap="round" />
+        </g>
+      </motion.g>
+    </SpriteFrame>
+  );
+
+  if (type === "bonkchoy") return (
+    <SpriteFrame small={small} action={action === "spin" ? "attack" : action}>
+      <LeafShadow />
+      <motion.g
+        animate={
+          action === "spin"
+            ? { rotate: [0, 360] }
+            : action === "attack"
+              ? { x: [-2, 4, -2], scaleX: [1, 1.08, 0.98, 1] }
+              : { rotate: [-1.2, 1.2, -1.2] }
+        }
+        transition={{ duration: action === "spin" ? 0.42 : action === "attack" ? 0.22 : 1.6, repeat: Infinity, ease: "easeInOut" }}
+        style={{ transformOrigin: "32px 40px" }}
+      >
+        <defs>
+          <linearGradient id="bonkBodyBetter" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="#f4ffd1" />
+            <stop offset="0.42" stopColor="#dff5a2" />
+            <stop offset="1" stopColor="#9cdb63" />
+          </linearGradient>
+          <radialGradient id="bonkLeafBetter" cx="36%" cy="22%" r="78%">
+            <stop offset="0" stopColor="#baff80" />
+            <stop offset="0.5" stopColor="#56d845" />
+            <stop offset="1" stopColor="#168d31" />
+          </radialGradient>
+          <linearGradient id="bonkStemArmBetter" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0" stopColor="#2ca33a" />
+            <stop offset="1" stopColor="#126b27" />
+          </linearGradient>
+          <radialGradient id="bonkFistBetter" cx="35%" cy="25%" r="76%">
+            <stop offset="0" stopColor="#9cff6d" />
+            <stop offset="0.55" stopColor="#34c945" />
+            <stop offset="1" stopColor="#12752a" />
+          </radialGradient>
+        </defs>
+
+        <motion.g
+          animate={action === "attack" || action === "spin" ? { rotate: [-18, 20, -18], x: [-1, 2, -1] } : { rotate: [-9, 7, -9] }}
+          transition={{ duration: action === "attack" || action === "spin" ? 0.16 : 1.1, repeat: Infinity, ease: "easeInOut" }}
+          style={{ transformOrigin: "20px 43px" }}
+        >
+          <path d="M27 41 C19 43 12 39 7 31" fill="none" stroke="url(#bonkStemArmBetter)" strokeWidth="4.8" strokeLinecap="round" />
+          <path d="M7 27 C11 20 21 22 24 29 C21 36 11 36 7 27 Z" fill="url(#bonkFistBetter)" stroke="#0e6427" strokeWidth="2" />
+          <path d="M10 25 C15 24 19 26 22 30" stroke="#baff8c" strokeWidth="1.8" opacity="0.55" fill="none" strokeLinecap="round" />
+          <path d="M9 31 C14 34 19 33 23 29" stroke="#0b5c22" strokeWidth="1.6" opacity="0.45" fill="none" />
+        </motion.g>
+
+        <motion.g
+          animate={action === "attack" || action === "spin" ? { rotate: [18, -20, 18], x: [1, -2, 1] } : { rotate: [9, -7, 9] }}
+          transition={{ duration: action === "attack" || action === "spin" ? 0.16 : 1.1, repeat: Infinity, ease: "easeInOut" }}
+          style={{ transformOrigin: "44px 43px" }}
+        >
+          <path d="M38 41 C46 43 53 39 58 31" fill="none" stroke="url(#bonkStemArmBetter)" strokeWidth="4.8" strokeLinecap="round" />
+          <path d="M58 27 C54 20 44 22 41 29 C44 36 54 36 58 27 Z" fill="url(#bonkFistBetter)" stroke="#0e6427" strokeWidth="2" />
+          <path d="M55 25 C50 24 46 26 43 30" stroke="#baff8c" strokeWidth="1.8" opacity="0.55" fill="none" strokeLinecap="round" />
+          <path d="M56 31 C51 34 46 33 42 29" stroke="#0b5c22" strokeWidth="1.6" opacity="0.45" fill="none" />
+        </motion.g>
+
+        <path
+          d="M31 17 C23 19 18 31 19 42 C20 54 27 61 34 60 C43 59 48 49 45 38 C43 28 39 20 31 17 Z"
+          fill="url(#bonkBodyBetter)"
+          stroke="#31873a"
+          strokeWidth="2.5"
+        />
+        <path d="M28 20 C24 31 25 45 31 56" stroke="#fbffe1" strokeWidth="3" opacity="0.52" fill="none" strokeLinecap="round" />
+        <path d="M38 24 C43 34 43 47 36 57" stroke="#72bf4c" strokeWidth="2.2" opacity="0.35" fill="none" strokeLinecap="round" />
+
+        <g>
+          <path d="M12 15 C18 3 31 4 34 18 C27 18 20 18 12 15 Z" fill="url(#bonkLeafBetter)" stroke="#136d27" strokeWidth="2.1" />
+          <path d="M24 11 C32 -3 49 3 50 18 C42 17 33 17 24 11 Z" fill="url(#bonkLeafBetter)" stroke="#136d27" strokeWidth="2.1" />
+          <path d="M32 18 C42 6 58 14 54 29 C47 24 39 20 32 18 Z" fill="url(#bonkLeafBetter)" stroke="#136d27" strokeWidth="2.1" />
+          <path d="M18 14 C23 12 29 13 34 18" stroke="#c8ff9b" strokeWidth="2" opacity="0.6" fill="none" strokeLinecap="round" />
+          <path d="M32 10 C39 10 45 13 49 18" stroke="#c8ff9b" strokeWidth="2" opacity="0.55" fill="none" strokeLinecap="round" />
+          <path d="M40 18 C46 18 51 22 54 27" stroke="#c8ff9b" strokeWidth="1.7" opacity="0.45" fill="none" strokeLinecap="round" />
+        </g>
+
+        <g>
+          <path d="M22 30 Q27 26 33 29" stroke="#275727" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+          <path d="M37 29 Q44 26 50 30" stroke="#275727" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+          <ellipse cx="29" cy="35" rx="4.5" ry="6" fill="#f7ffe3" stroke="#3c6330" strokeWidth="1.4" />
+          <circle cx="30" cy="35.3" r="2.2" fill="#172112" />
+          <path d="M39 35 Q44 31.5 49 34.5" stroke="#172112" strokeWidth="2.8" fill="none" strokeLinecap="round" />
+          <path d="M34 44 L39 44 L36.5 49 Z" fill="#f7ffe5" stroke="#4c6a35" strokeWidth="1.4" />
+          <path d="M33 43 Q35 41 38 43" stroke="#4c6a35" strokeWidth="1.2" fill="none" opacity="0.5" />
+        </g>
+      </motion.g>
+    </SpriteFrame>
+  );
+
+  return <SpriteFrame small={small}><circle cx="32" cy="32" r="18" fill="#79cf55" /></SpriteFrame>;
+}
+
+function ZombieSprite({ type, hpPct = 100, action = "walk", noSmash = false, flying = false, groundedAir = false }) {
+  const eating = action === "eat";
+  const isGarg = type === "gargantuar";
+  const isImp = type === "imp" || type === "kaleimp";
+  const size = isGarg ? 62 : flying ? 54 : isImp ? 42 : 48;
+  const armorGone = hpPct < 45;
+  const armorCracked = hpPct < 70;
+  const skin = type === "kaleimp" ? "#65d65f" : isGarg ? "#77946f" : "#a8b49b";
+  const jacket = isImp ? "#b8342e" : isGarg ? "#493d38" : flying ? "#d9d7d1" : "#6b452d";
+  const pants = isImp ? "#263d7a" : "#253b6e";
+
+  return (
+    <motion.svg
+      width={size}
+      height={size}
+      viewBox="0 0 72 72"
+      className="overflow-visible drop-shadow-[0_3px_3px_rgba(0,0,0,0.55)]"
+      initial={false}
+      animate={{ y: eating ? [0, 1.5, 0] : [0, -1.4, 0], x: eating ? [0, 2.5, 0] : [0, -1, 0] }}
+      transition={{ duration: eating ? 0.28 : isGarg ? 0.8 : 0.55, repeat: Infinity, ease: "easeInOut" }}
+    >
+      <defs>
+        <radialGradient id={`zskin_${type}`} cx="35%" cy="25%" r="75%">
+          <stop offset="0" stopColor="#d6dec7" />
+          <stop offset="0.5" stopColor={skin} />
+          <stop offset="1" stopColor="#5d6f58" />
+        </radialGradient>
+        <linearGradient id={`jacket_${type}`} x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0" stopColor={isGarg ? "#6c5b50" : flying ? "#f0eee8" : "#8a5b39"} />
+          <stop offset="1" stopColor={jacket} />
+        </linearGradient>
+        <linearGradient id="bucketMetal" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0" stopColor="#f2f2ec" />
+          <stop offset="0.65" stopColor="#bfc4c8" />
+          <stop offset="1" stopColor="#7f8991" />
+        </linearGradient>
+        <linearGradient id="coneOrange" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stopColor="#ffb347" />
+          <stop offset="1" stopColor="#e2691e" />
+        </linearGradient>
+      </defs>
+
+      <ellipse cx="35" cy="66" rx={isGarg ? 24 : 17} ry="4" fill="#000" opacity="0.25" />
+
+      {flying && !groundedAir && (
+        <motion.g animate={{ y: [-2, 2, -2], rotate: [-2, 2, -2] }} transition={{ duration: 1.1, repeat: Infinity }}>
+          <path d="M36 19 C42 12 50 10 58 14 C64 19 63 31 56 36 C48 40 40 36 36 28 Z" fill="#c5192d" stroke="#5d0711" strokeWidth="2" />
+          <path d="M42 19 L57 31 M46 32 L57 20" stroke="#25030a" strokeWidth="2.2" />
+          <path d="M37 35 L33 45" stroke="#333" strokeWidth="1.7" />
+          <path d="M30 42 C25 37 20 38 17 42" fill="none" stroke="#999" strokeWidth="1" />
+          <ellipse cx="24" cy="42" rx="5" ry="4" fill="#e6e1d8" stroke="#333" strokeWidth="1.2" />
+          <path d="M19 39 C21 35 25 34 28 39" fill="#f8cf3b" stroke="#8a5e00" strokeWidth="1" />
+          <path d="M20 43 C23 44 26 44 29 42" stroke="#3c6fbd" strokeWidth="1.2" />
+        </motion.g>
+      )}
+
+      <motion.g
+        transform={isGarg ? "translate(-1 -3) scale(1.12)" : isImp ? "translate(6 10) scale(0.82)" : "translate(0 2)"}
+        animate={eating ? { rotate: [-2, 2, -2] } : { rotate: [-1, 1, -1] }}
+        transition={{ duration: eating ? 0.25 : 0.7, repeat: Infinity }}
+        style={{ transformOrigin: "34px 45px" }}
+      >
+        {isGarg && (
+          <g>
+            <path d="M18 27 C13 30 11 39 14 48 C17 57 26 61 36 60 C52 58 62 46 59 32 C56 19 43 15 31 19 Z" fill="#71896c" stroke="#354633" strokeWidth="2.8" />
+            <path d="M22 27 C29 21 42 20 52 28" stroke="#a6b69b" strokeWidth="3" opacity="0.45" fill="none" />
+            <path d="M37 21 C43 12 52 11 57 19 C51 21 45 22 37 21 Z" fill="#5a2d2f" opacity="0.75" />
+            <path d="M40 17 C48 17 53 18 58 23" stroke="#2b1d1b" strokeWidth="2" />
+          </g>
+        )}
+
+        {!isGarg && (
+          <g>
+            <path d="M27 31 L21 55 L34 56 L36 33 Z" fill={pants} stroke="#172348" strokeWidth="1.8" />
+            <path d="M40 32 L42 56 L55 56 L48 31 Z" fill={pants} stroke="#172348" strokeWidth="1.8" />
+            <path d="M20 56 L12 62 L28 65 L35 58 Z" fill="#4b3520" stroke="#21160d" strokeWidth="1.8" />
+            <path d="M42 56 L36 63 L53 64 L59 58 Z" fill="#4b3520" stroke="#21160d" strokeWidth="1.8" />
+            <path d="M23 29 C22 43 29 51 41 51 C53 50 56 40 50 29 Z" fill={`url(#jacket_${type})`} stroke="#3a281b" strokeWidth="2" />
+            {!isImp && !flying && <path d="M32 31 L45 50" stroke="#d3d3c8" strokeWidth="7" />}
+            {!isImp && !flying && <path d="M33 30 L47 50" stroke="#a91822" strokeWidth="5" />}
+            {!isImp && !flying && <g stroke="#f0d6d4" strokeWidth="1.2"><path d="M36 35 L42 35" /><path d="M39 41 L45 41" /><path d="M42 47 L48 47" /></g>}
+            <path d="M25 31 L19 48 C25 49 30 44 31 36 Z" fill="#4b3120" opacity="0.45" />
+          </g>
+        )}
+
+        <motion.g animate={eating ? { rotate: [-8, 16, -8] } : { rotate: [8, -8, 8] }} transition={{ duration: eating ? 0.22 : 0.6, repeat: Infinity }} style={{ transformOrigin: "24px 39px" }}>
+          <path d={isGarg ? "M25 41 L15 49" : "M24 39 L15 48"} stroke={`url(#zskin_${type})`} strokeWidth={isGarg ? 7 : 5} strokeLinecap="round" />
+          <path d="M14 48 C11 49 12 55 16 55 C20 55 22 50 19 48" fill={`url(#zskin_${type})`} stroke="#435441" strokeWidth="1.4" />
+        </motion.g>
+        <motion.g animate={eating ? { rotate: [16, -8, 16] } : { rotate: [-8, 8, -8] }} transition={{ duration: eating ? 0.22 : 0.6, repeat: Infinity }} style={{ transformOrigin: "47px 39px" }}>
+          <path d={isGarg ? "M48 40 L58 48" : "M47 39 L57 47"} stroke={`url(#zskin_${type})`} strokeWidth={isGarg ? 7 : 5} strokeLinecap="round" />
+          <path d="M57 47 C61 47 62 53 58 55 C54 56 52 50 54 48" fill={`url(#zskin_${type})`} stroke="#435441" strokeWidth="1.4" />
+        </motion.g>
+
+        <motion.g animate={eating ? { x: [0, 1.5, 0], rotate: [-3, 3, -3] } : { rotate: [-1.5, 1.5, -1.5] }} transition={{ duration: eating ? 0.24 : 0.9, repeat: Infinity }} style={{ transformOrigin: "35px 24px" }}>
+          <path d={isGarg ? "M21 16 C24 7 42 5 49 14 C56 23 49 33 36 34 C24 35 16 26 21 16 Z" : "M18 15 C22 5 43 4 50 15 C56 27 46 37 32 36 C19 35 12 26 18 15 Z"} fill={`url(#zskin_${type})`} stroke="#3e4b39" strokeWidth="2.3" />
+          <path d="M23 13 C30 8 41 9 48 15" stroke="#d8dfcc" strokeWidth="2" opacity="0.35" fill="none" />
+          <g stroke="#1c251d" strokeWidth="1.2" strokeLinecap="round" opacity="0.8">
+            <path d="M24 10 C23 5 20 3 17 6" />
+            <path d="M31 8 C30 3 32 1 35 4" />
+            <path d="M42 9 C45 5 48 5 50 9" />
+          </g>
+
+          <ellipse cx="28" cy="22" rx={isImp ? 5 : 6.5} ry={isImp ? 6.5 : 8} fill="#f4f2bd" stroke="#303524" strokeWidth="1.8" />
+          <ellipse cx="45" cy="21" rx={isImp ? 5 : 6.8} ry={isImp ? 6.5 : 8} fill="#f4f2bd" stroke="#303524" strokeWidth="1.8" />
+          <circle cx="30" cy="23" r="1.8" fill="#111" />
+          <circle cx="43" cy="22" r="1.8" fill="#111" />
+          <path d="M21 17 Q27 13 34 16" stroke="#2d3527" strokeWidth="2" fill="none" strokeLinecap="round" />
+          <path d="M38 15 Q46 12 53 17" stroke="#2d3527" strokeWidth="2" fill="none" strokeLinecap="round" />
+          <path d={eating ? "M25 31 C31 38 42 38 49 30 L49 37 C42 43 29 43 23 36 Z" : "M25 30 C32 35 42 34 49 29 L48 35 C41 40 30 40 24 35 Z"} fill="#3b1113" stroke="#1c0808" strokeWidth="1.6" />
+          <g fill="#f6f0d1" stroke="#402020" strokeWidth="0.8">
+            <path d="M29 31 L32 37 L35 31 Z" />
+            <path d="M40 31 L43 37 L46 31 Z" />
+          </g>
+          <circle cx="23" cy="27" r="1.5" fill="#243321" opacity="0.8" />
+          <circle cx="20" cy="24" r="1.2" fill="#243321" opacity="0.8" />
+          <circle cx="52" cy="26" r="1.1" fill="#243321" opacity="0.65" />
+        </motion.g>
+
+        {type === "conehead" && !armorGone && (
+          <motion.g animate={{ rotate: [-3, 3, -3] }} transition={{ duration: 0.75, repeat: Infinity }} style={{ transformOrigin: "35px 8px" }}>
+            <path d="M20 15 L35 -8 L51 15 Z" fill="url(#coneOrange)" stroke="#74390c" strokeWidth="2.2" />
+            <ellipse cx="35" cy="15" rx="18" ry="5" fill="#e77720" stroke="#74390c" strokeWidth="2" />
+            <path d="M30 4 L42 14" stroke="#ffd39c" strokeWidth="2" opacity="0.55" />
+            {armorCracked && <path d="M36 -5 L32 8 L40 15" stroke="#7b360d" strokeWidth="2" fill="none" />}
+          </motion.g>
+        )}
+
+        {type === "buckethead" && !armorGone && (
+          <motion.g animate={{ rotate: [-5, 2, -5] }} transition={{ duration: 0.75, repeat: Infinity }} style={{ transformOrigin: "36px 12px" }}>
+            <path d="M18 17 L22 -2 H51 L55 17 C45 22 28 23 18 17 Z" fill="url(#bucketMetal)" stroke="#515960" strokeWidth="2.2" />
+            <path d="M22 2 C31 6 43 6 52 1" fill="none" stroke="#f9f9f0" strokeWidth="2" opacity="0.6" />
+            <path d="M20 12 C31 18 44 18 55 12" fill="none" stroke="#636a70" strokeWidth="2" />
+            <path d="M24 1 L21 13" stroke="#d12c36" strokeWidth="2" />
+            {armorCracked && <path d="M37 0 L43 17" stroke="#70777f" strokeWidth="2" />}
+          </motion.g>
+        )}
+
+        {isGarg && !noSmash && (
+          <motion.g animate={{ rotate: eating ? [-28, 12, -28] : [-24, -8, -24], x: eating ? [0, -3, 0] : [0, 1, 0] }} transition={{ duration: eating ? 0.34 : 0.9, repeat: Infinity }} style={{ transformOrigin: "18px 33px" }}>
+            <path d="M5 28 L32 48" stroke="#6b4324" strokeWidth="6" strokeLinecap="round" />
+            <path d="M2 23 L14 34 M8 19 L20 38" stroke="#e7d5b6" strokeWidth="3" strokeLinecap="round" />
+          </motion.g>
+        )}
+        {isGarg && noSmash && <path d="M51 20 Q58 28 52 37" stroke="#a5c49b" strokeWidth="4" fill="none" strokeLinecap="round" opacity="0.75" />}
+      </motion.g>
+    </motion.svg>
+  );
+}
+
+function AllySprite({ ally }) {
+  return <ZombieSprite type="kaleimp" hpPct={healthPct(ally)} action={ally.cd > 0 ? "eat" : "walk"} />;
+}
+
+function cardCost(type, state) {
+  let cost = applyPlantStats(type, state.plantMods, state).cost;
+  if (state.packetPrinter && (state.plantsPlaced + 1) % 3 === 0) cost = Math.max(0, cost - 25);
+  return cost;
+}
+
+function fmt(n, digits = 1) {
+  return Number.isFinite(n) ? Number(n).toFixed(digits).replace(/\.0$/, "") : "∞";
+}
+
+function buffPreview(choice, state) {
+  if (!choice) return "";
+  if (choice.type === "plantJackpot") {
+    const already = new Set((state.perPlantBuffNames && state.perPlantBuffNames[choice.plant]) || []);
+    const missing = (plantBuffs[choice.plant] || []).filter(([name]) => !already.has(name));
+    if (!missing.length) return `${plantDefs[choice.plant].name} has no missing buffs. You still get one hidden random plant jackpot.`;
+    const nl = String.fromCharCode(10);
+    const list = missing.map(([name, desc]) => `• ${name}: ${desc}`).join(nl);
+    return `Unlocks for ${plantDefs[choice.plant].name}:${nl}${list}${nl}Also jackpots one hidden random plant.`;
+  }
+  if (choice.type === "plant") {
+    const before = applyPlantStats(choice.plant, state.plantMods, state);
+    const afterMods = { ...state.plantMods, [choice.plant]: choice.fn(state.plantMods[choice.plant] || {}) };
+    const after = applyPlantStats(choice.plant, afterMods, state);
+    const parts = [];
+    if (before.cost !== after.cost) parts.push(`Cost: ${before.cost} → ${after.cost}`);
+    if (before.hp !== after.hp) parts.push(`HP: ${before.hp} → ${after.hp}`);
+    if (before.damage !== after.damage && after.damage > 0) parts.push(`Damage: ${before.damage} → ${after.damage}`);
+    if (before.fireRate !== after.fireRate && before.kind !== "sun") parts.push(`Fire rate: ${fmt(before.fireRate)}/s → ${fmt(after.fireRate)}/s`);
+    if (before.punchRate !== after.punchRate && before.kind === "melee") parts.push(`Punch rate: ${fmt(before.punchRate)}/s → ${fmt(after.punchRate)}/s`);
+    if (before.sunRate !== after.sunRate && before.kind === "sun") parts.push(`Sunflower bloom: 1 every ${fmt(before.sunRate)}s → 1 every ${fmt(after.sunRate)}s`);
+    if (before.sunAmount !== after.sunAmount && before.kind === "sun") parts.push(`Sun: ${before.sunAmount} → ${after.sunAmount}`);
+    if (before.biteCd !== after.biteCd && before.kind === "chomper") parts.push(`Chew time: ${fmt(before.biteCd)}s → ${fmt(after.biteCd)}s`);
+    if (before.radius !== after.radius && before.kind === "bomb") parts.push(`Radius: ${before.radius} → ${after.radius}`);
+    if (choice.name === "Rogue Petals") parts.push("New ability: Sunflower sun gives +0.1 rogue points when collected");
+    if (choice.name === "Fourteen-Armed Choynado") parts.push("New ability: Bonk Choy covers a 3x5 area and spins every 20s");
+    if (parts.length) return parts.join(" · ");
+    return `New ability: ${choice.desc}`;
+  }
+  if (choice.type === "global") {
+    const before = state;
+    const after = choice.fn({ ...state, mowers: state.mowers.map(m => ({ ...m })) });
+    const parts = [];
+    if (before.allDamage !== after.allDamage) parts.push(`All damage: ${fmt(before.allDamage, 2)}x → ${fmt(after.allDamage, 2)}x`);
+    if (before.allHp !== after.allHp) parts.push(`All HP: ${fmt(before.allHp, 2)}x → ${fmt(after.allHp, 2)}x`);
+    if (before.skySunRate !== after.skySunRate) parts.push(`Sky sun: 1 every ${fmt(currentSkySunInterval(before))}s → 1 every ${fmt(currentSkySunInterval(after))}s`);
+    if (before.maxSun !== after.maxSun) parts.push(`Max sun: ${before.maxSun} → ${after.maxSun}`);
+    if (choice.name === "Evergreen Drafts") parts.push("New rule: plant/global buffs can repeat; repeatable buffs you already got trigger once more now");
+    if (choice.name === "Jackpot") parts.push("Choose a plant to jackpot, plus one hidden random plant");
+    if (before.sun !== after.sun) parts.push(`Sun now: ${Math.floor(before.sun)} → ${Math.floor(after.sun)}`);
+    if (before.mowerRecharge !== after.mowerRecharge) parts.push(`Mower recharge: ${before.mowerRecharge ?? "off"} → ${after.mowerRecharge}s`);
+    if (before.cooldownMult !== after.cooldownMult) parts.push(`Cooldowns: ${fmt(before.cooldownMult, 2)}x → ${fmt(after.cooldownMult, 2)}x`);
+    if (before.choiceCount !== after.choiceCount) parts.push(`Choices: ${before.choiceCount} → ${after.choiceCount}`);
+    if (parts.length) return parts.join(" · ");
+    return `New ability: ${choice.desc}`;
+  }
+  if (choice.type === "debuff") {
+    const before = applyZombieStats(choice.zombie, state);
+    const afterMods = choice.fn(state.zombieMods);
+    const after = applyZombieStats(choice.zombie, { ...state, zombieMods: afterMods });
+    const parts = [];
+    if (before.hp !== after.hp) parts.push(`${before.name} HP: ${Math.round(before.hp)} → ${Math.round(after.hp)}`);
+    if (before.speed !== after.speed) parts.push(`Speed: ${fmt(before.speed)} → ${fmt(after.speed)}`);
+    if (before.damage !== after.damage) parts.push(`Damage: ${Math.round(before.damage)} → ${Math.round(after.damage)}`);
+    if (before.points !== after.points) parts.push(`Points: ${before.points} → ${after.points}`);
+    if (before.flying !== after.flying) parts.push("Flying: yes → no");
+    if (parts.length) return parts.join(" · ");
+    return `New rule: ${choice.desc}`;
+  }
+  return "";
+}
+
+function makeBuildCopyText(state, scaling) {
+  const lines = state.buffLog.length
+    ? state.buffLog.map((b, i) => `${i + 1}. [${b.rarity || "Common"}] ${b.name} — ${b.desc}`)
+    : ["No buffs/debuffs yet."];
+  return ["PvZ Rogue Build", `Score: ${state.score}`, `Buffs: ${state.buffCount}`, `Zombie Scale: ${scaling}x`, "", ...lines].join("\n");
+}
+
+function makeOfferCopyText(choices, state, scaling) {
+  const lines = choices.length
+    ? choices.map((c, i) => {
+        const target = c.type === "plant" || c.type === "plantJackpot" ? plantDefs[c.plant].name : c.type === "debuff" ? zombieDefs[c.zombie]?.name || "Zombie" : "Global";
+        return `${i + 1}. [${c.rarity || "Common"}] ${c.name} (${target}) — ${c.desc}\n   Preview: ${buffPreview(c, state)}`;
+      })
+    : ["No buffs currently offered."];
+  return ["PvZ Rogue Offered Buffs", `Score: ${state.score}`, `Buffs: ${state.buffCount}`, `Zombie Scale: ${scaling}x`, "", ...lines].join("\n");
+}
+
+async function robustCopy(text) {
+  if (!text) return false;
+  try {
+    if (navigator?.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Try fallback below.
+  }
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.top = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+function runDevTests() {
+  const s = baseState();
+  console.assert(rarityForBuff("Unlock Zombie Debuffs") === "Legendary", "Unlock debuff rarity should be Legendary");
+  console.assert(RARITY_WEIGHTS.Rare === 4.04 && RARITY_WEIGHTS.Epic === 3.13 && RARITY_WEIGHTS.Legendary === 2.6, "Normal draft rarity weights should target about 15% Rare, 4% Epic, 1% Legendary");
+  console.assert(rarityForBuff("Solar Flare") === "Epic", "Solar Flare should be Epic");
+  console.assert(rarityForBuff("Fourteen-Armed Choynado") === "Epic", "Bonk Choy epic should be Epic");
+  console.assert(rarityForBuff("Rogue Petals") === "Rare", "Rogue Petals should be Rare");
+  console.assert(rarityForBuff("Evergreen Drafts") === "Legendary", "Evergreen Drafts should be Legendary");
+  const echoState = applyEvergreenEchoes({ ...s, buffLog: [{ name: "Bigger Peas", desc: "+35% damage", rarity: "Uncommon", type: "plant", target: "peashooter" }] });
+  console.assert((echoState.plantMods.peashooter.damageMult || 1) > 1, "Evergreen should reapply repeatable picked buffs");
+  console.assert(rarityForBuff("Jackpot") === "Legendary", "Jackpot should be Legendary");
+  console.assert(s.sun === 500, "Starting sun should be 500");
+  console.assert(s.maxSun === 1000, "Starting max sun should be 1000");
+  console.assert(applyPlantStats("sunflower", s.plantMods, s).sunAmount === 50, "Base Sunflower should make 50 sun");
+  console.assert(applyPlantStats("sunflower", s.plantMods, s).sunRate === 8.5, "Base Sunflower should start at old 8.5s rate");
+  console.assert(applyPlantStats("sunflower", s.plantMods, { ...s, roguePoints: 200 }).sunRate === 25.5, "Sunflower should slow to 25.5s by 200 rogue points");
+  console.assert(currentSkySunInterval(s) === 6.5, "Sky sun should start at old 6.5s rate");
+  console.assert(currentSkySunInterval({ ...s, roguePoints: 200 }) === 19.5, "Sky sun should slow to 19.5s by 200 rogue points");
+  console.assert(plantDefs.cabbagepult.hitsAir === true, "Cabbage Pult should hit air by default");
+  console.assert(zombieDefs.balloon.hp === 135 && zombieDefs.balloon.points === 2, "Balloon should be lower HP and worth 2 points");
+  console.assert(zombieDefs.gargantuar.speed < 4 && zombieDefs.gargantuar.hp < 2200, "Garg should be slower and slightly lower HP");
+  console.assert(createZombie({ ...s, buffCount: 0 }).type === "basic", "Only basic zombie should spawn at 0 buffs");
+  console.assert(makeChoices(s).length === 3, "Base choice count should be 3");
+  console.assert(makeChoices({ ...s, draftMinRarity: "Rare" }, "Rare").every(c => RARITY_RANK[c.rarity] >= RARITY_RANK.Rare), "Rare milestone drafts should be Rare+");
+  console.assert(makeChoices({ ...s, draftMinRarity: "Epic" }, "Epic").every(c => RARITY_RANK[c.rarity] >= RARITY_RANK.Epic), "Epic milestone drafts should be Epic+");
+  console.assert(milestoneMinRarity(50) === "Rare" && milestoneMinRarity(100) === "Rare" && milestoneMinRarity(150) === "Rare", "Every 50-point milestone should be Rare+");
+  console.assert(milestoneMinRarity(120) === "Epic" && milestoneMinRarity(240) === "Epic" && milestoneMinRarity(360) === "Epic", "Every 120-point milestone should be Epic+");
+  console.assert(makeChoices({ ...s, debuffsUnlocked: true }).at(-1)?.type === "debuff", "Right-side choice should be debuff after unlock");
+  const chosen = { ...s, pickedBuffNames: ["Brighter Faces"] };
+  console.assert(!buildBuffPool(chosen).some(b => b.name === "Brighter Faces"), "Picked buffs should not return to the pool");
+  console.assert(makeDebuffChoices(s).length === 3, "Debuff draft should offer 3 debuffs");
+  console.assert(makePlantJackpotChoices().length === Object.keys(plantDefs).length, "Plant jackpot draft should offer every plant");
+  console.assert(!isPlantMaxBuffed(s, "peashooter"), "Plants should not start max buffed");
+  const mowerState = globalBuffs.find(b => b[0] === "Mower Workshop")[2](s);
+  console.assert(mowerState.mowerRecharge === 75, "Mower Workshop should enable 75s recharge");
+  const offerText = makeOfferCopyText(makeChoices(s), s, "1.00");
+  console.assert(offerText.includes("Preview:"), "Offered buffs copy text should include previews");
+  const buildText = makeBuildCopyText({ ...s, buffLog: [{ name: "Test", desc: "Test desc", rarity: "Common" }] }, "1.00");
+  console.assert(buildText.includes("PvZ Rogue Build") && buildText.includes("\n"), "Build copy text should include title and newlines");
+  console.assert(applyPlantStats("tallnut", s.plantMods, s).blocksAir === true, "Tall Nut should block air enemies");
+  console.assert(applyPlantStats("spikeweed", s.plantMods, s).kind === "spike", "Spikeweed should be non-blocking spike plant");
+  console.assert(plantDefs.spikeweed.hp === 300 && plantDefs.spikeweed.damage === 11, "Spikeweed should have 300 HP and deal half Peashooter damage per second");
+  console.assert(plantDefs.bonkchoy.cost === 150 && plantBuffs.bonkchoy.length === 10, "Bonk Choy should exist with 10 buffs");
+  console.assert(plantDefs.cherrybomb.damage === 2520 && plantDefs.cherrybomb.gargBonus === 1.25, "Cherry Bomb should be nerfed to 2520 damage and keep bonus vs Gargantuars");
+  const burnVisualShouldNotBlockPlanting = "pointer-events-none";
+  console.assert(burnVisualShouldNotBlockPlanting === "pointer-events-none", "Burning tile visuals should not block planting clicks");
+  const existingPlant = createPlant("peashooter", 0, 0, s);
+  const cherryPlant = createPlant("cherrybomb", 0, 0, s);
+  console.assert(existingPlant.row === cherryPlant.row && existingPlant.col === cherryPlant.col, "Cherry Bomb should be allowed to target an occupied tile");
+  const jackpotState = applyMissingBuffsForPlant(s, "peashooter");
+  console.assert((jackpotState.perPlantBuffNames.peashooter || []).length === plantBuffs.peashooter.length, "Plant jackpot should grant every missing buff for a plant");
+  console.assert(plantBuffs.bonkchoy.some(b => b[0] === "Fourteen-Armed Choynado"), "Bonk Choy epic should be renamed Fourteen-Armed Choynado");
+  console.assert(plantBuffs.sunflower.some(b => b[0] === "Rogue Petals"), "Sunflower should have Rogue Petals buff");
+  const kale = createKaleImp(0, 100);
+  console.assert(kale.type === "kaleimp" && kale.damage > 0 && kale.hp > 0, "Kale Imps should be green imp combat units");
+}
+
+if (typeof window !== "undefined" && !window.__PVZ_ROGUE_TESTED__) {
+  window.__PVZ_ROGUE_TESTED__ = true;
+  runDevTests();
+}
+
+export default function PvZRoguePrototype() {
+  const [state, setState] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SAVE_KEY);
+      if (!saved) return baseState();
+      return normalizeState(JSON.parse(saved));
+    } catch {
+      return baseState();
+    }
+  });
+  const [copyNote, setCopyNote] = useState("");
+  const [offerCopyNote, setOfferCopyNote] = useState("");
+  const [buffPickLocked, setBuffPickLocked] = useState(false);
+  const stateRef = useRef(state);
+  const lastTick = useRef(Date.now());
+  stateRef.current = state;
+
+  const plantCards = useMemo(() => Object.keys(plantDefs), []);
+  const scaling = Math.pow(1.2, state.buffCount).toFixed(2);
+  const maxedPlants = maxBuffedPlants(state);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      try {
+        localStorage.setItem(SAVE_KEY, JSON.stringify({ ...stateRef.current, running: false, pausedForBuff: false, choices: [] }));
+      } catch {
+        // Ignore save failures.
+      }
+    }, 1500);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!state.pausedForBuff) return undefined;
+    // Prevents accidentally picking a buff while the player is still clicking/dragging to place or shovel a plant.
+    setBuffPickLocked(true);
+    const id = setTimeout(() => setBuffPickLocked(false), 2000);
+    return () => clearTimeout(id);
+  }, [state.pausedForBuff, state.draftMode, state.choices]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const dt = Math.min(0.25, (now - lastTick.current) / 1000);
+      lastTick.current = now;
+      setState(prev => step(prev, dt));
+    }, TICK_MS);
+    return () => clearInterval(interval);
+  }, []);
+
+  function startDebuffDraft(next, count) {
+    return { ...next, pausedForBuff: true, draftMode: "debuff", pendingDebuffDrafts: count, choices: makeDebuffChoices(next) };
+  }
+
+  function startPlantJackpotDraft(next) {
+    return { ...next, pausedForBuff: true, draftMode: "plantJackpot", choices: makePlantJackpotChoices() };
+  }
+
+  function step(prev, dt) {
+    if (!prev.running || prev.pausedForBuff || prev.gameOver) return prev;
+
+    let s = { ...prev, elapsed: prev.elapsed + dt };
+    let plants = prev.plants.map(p => ({ ...p }));
+    let zombies = prev.zombies.map(z => ({ ...z }));
+    let allies = (prev.allies || []).map(a => ({ ...a }));
+    let projectiles = prev.projectiles.map(p => ({ ...p }));
+    let floaties = prev.floaties.map(f => ({ ...f, life: f.life - dt, y: f.y - 16 * dt }));
+    let suns = (prev.suns || []).map(orb => ({ ...orb, life: orb.life - dt, age: (orb.age || 0) + dt })).filter(orb => orb.life > 0);
+    let burns = prev.burns.map(b => ({ ...b, life: b.life - dt, tick: b.tick - dt })).filter(b => b.life > 0);
+    let mowers = prev.mowers.map(m => ({ ...m }));
+    let sun = prev.sun;
+    let score = prev.score;
+    let roguePoints = prev.roguePoints;
+    let nextBuffAt = prev.nextBuffAt;
+    let pausedForBuff = false;
+    let choices = prev.choices;
+    let gameOver = false;
+
+    s.skySunMeter += dt * s.skySunRate;
+    if (s.skySunMeter >= currentSkySunInterval(s)) {
+      s.skySunMeter = 0;
+      const amount = Math.round(50 * s.sunValueMult);
+      suns.push({ id: makeId("sun"), amount, x: 28 + Math.random() * (BOARD_W - 70), y: 24 + Math.random() * (BOARD_H - 70), life: 12, age: 0 });
+    }
+
+    s.spawnMeter += dt;
+    if (s.spawnMeter >= 5) {
+      s.spawnMeter = 0;
+      zombies.push(createZombie(s));
+    }
+
+    plants = plants.map(p => {
+      const stats = applyPlantStats(p.type, s.plantMods, s);
+      const next = { ...p };
+      next.cd = Math.max(0, next.cd - dt);
+      next.timer += dt;
+
+      if (s.globalRegen || stats.mods.regen) next.hp = Math.min(next.maxHp, next.hp + (s.globalRegen + (stats.mods.regen || 0)) * dt);
+      if (stats.mods.panicHeal && !next.panicUsed && next.hp < next.maxHp * 0.3) {
+        next.hp = Math.min(next.maxHp, next.hp + next.maxHp * 0.35);
+        next.panicUsed = true;
+      }
+
+      if (stats.kind === "sun") {
+        let rate = stats.sunRate;
+        if (stats.mods.lowSunBoost && sun < 100) rate *= 0.65;
+        if (next.timer >= rate) {
+          next.timer = 0;
+          next.bloomCount += 1;
+          let amount = stats.sunAmount;
+          if (stats.mods.doubleBloom && Math.random() < stats.mods.doubleBloom) amount *= 2;
+          if (stats.mods.goldenBloom && next.bloomCount % 5 === 0) amount += 50;
+          if (stats.mods.bankGain) s.maxSun += stats.mods.bankGain;
+          suns.push({ id: makeId("sun"), amount, x: next.col * CELL_W + 28, y: next.row * CELL_H + 18, row: next.row, life: 12, age: 0, fromSunflower: true });
+        }
+      }
+
+      if ((stats.kind === "shooter" || stats.kind === "lobber") && next.cd <= 0) {
+        const canHit = z => z.row === next.row && z.x > next.col * CELL_W + 35 && (!z.flying || stats.hitsAir || z.groundedAir);
+        if (zombies.some(canHit)) {
+          const shots = 1 + (stats.mods.extraShots || 0) + (Math.random() < (stats.mods.doubleChance || 0) ? 1 : 0) + (Math.random() < (stats.mods.tripleChance || 0) ? 2 : 0);
+          for (let i = 0; i < shots; i += 1) {
+            projectiles.push({
+              id: makeId("proj"), row: next.row, x: next.col * CELL_W + 50, y: next.row * CELL_H + 30 + i * 5,
+              damage: stats.damage, speed: stats.kind === "lobber" ? 190 : 260, pierce: stats.mods.pierce || 1,
+              source: next.type, slow: stats.mods.slowOnHit || 0, splash: stats.mods.splash || 0,
+              stun: stats.mods.stunChance || 0, poison: stats.mods.poison || 0, airMult: stats.mods.airDamageMult || 1,
+            });
+          }
+          next.shotCount += shots;
+          if (stats.mods.shotSunEvery && next.shotCount >= stats.mods.shotSunEvery) {
+            next.shotCount = 0;
+            sun = Math.min(s.maxSun, sun + 25);
+            floaties.push({ id: makeId("shotSun"), text: "+25☀", x: next.col * CELL_W + 38, y: next.row * CELL_H + 20, life: 1 });
+          }
+          next.cd = (1 / stats.fireRate) * s.cooldownMult;
+        }
+      }
+
+      if (stats.kind === "melee" && next.cd <= 0) {
+        const hitRows = stats.mods.crossLane || stats.mods.choynado ? [next.row - 1, next.row, next.row + 1] : [next.row];
+        const hitCols = stats.mods.choynado ? [next.col - 2, next.col - 1, next.col, next.col + 1, next.col + 2] : [next.col - 2, next.col - 1, next.col + 1, next.col + 2];
+        const targets = zombies.filter(z => !z.flying && hitRows.includes(z.row) && hitCols.includes(Math.floor(z.x / CELL_W)) && !(stats.mods.choynado && z.row === next.row && Math.floor(z.x / CELL_W) === next.col));
+        if (targets.length) {
+          const target = targets[0];
+          next.punchCount += 1;
+          const surge = stats.mods.spinachSurge && next.punchCount % 6 === 0 ? 2 : 1;
+          target.hp -= stats.damage * surge;
+          next.cd = (1 / stats.punchRate) * s.cooldownMult;
+        }
+        if (stats.mods.choynado) {
+          next.spinTimer += dt;
+          if (next.spinTimer >= 20 && next.spinTime <= 0) {
+            next.spinTimer = 0;
+            next.spinTime = 3;
+            next.spinTick = 0;
+          }
+        }
+      }
+
+      if (stats.kind === "chomper" && next.cd <= 0) {
+        const rangePx = (stats.mods.biteRange || 1) * CELL_W;
+        const front = z => z.row === next.row && !z.flying && z.x > next.col * CELL_W && z.x < next.col * CELL_W + rangePx + 60;
+        const back = z => stats.mods.backbite && z.row === next.row && !z.flying && z.x < next.col * CELL_W && z.x > next.col * CELL_W - rangePx - 20;
+        const target = zombies.find(z => front(z) || back(z));
+        if (target) {
+          target.hp -= stats.biteDamage * (stats.mods.biteDamageMult || 1);
+          if (stats.mods.eatSun) sun = Math.min(s.maxSun, sun + stats.mods.eatSun);
+          if (stats.mods.burpDamage) zombies.forEach(z => { if (z.row === next.row && z.x > next.col * CELL_W) z.hp -= stats.mods.burpDamage; });
+          const chew = Math.random() < (stats.mods.freeBiteChance || 0) ? 0.4 : stats.biteCd;
+          next.cd = chew;
+          next.chewMax = chew;
+        }
+      }
+
+      if (stats.kind === "bomb") {
+        next.fuse -= dt;
+        if (next.fuse <= 0) next.explode = true;
+      }
+
+      return next;
+    });
+
+    for (const p of plants) {
+      const stats = applyPlantStats(p.type, s.plantMods, s);
+      if (stats.kind === "spike") {
+        zombies.forEach(z => {
+          const sameTile = z.row === p.row && !z.flying && z.x > p.col * CELL_W - 12 && z.x < (p.col + 1 + (stats.mods.widthBonus || 0)) * CELL_W;
+          if (sameTile) {
+            const damageFactor = z.type === "gargantuar" ? (stats.mods.bossDamageMult || 1) : 1;
+            z.hp -= stats.damage * damageFactor * dt;
+            p.hp -= 10 * dt;
+            if (stats.mods.slowOnHit) z.slow = Math.max(z.slow, 2.5);
+          }
+        });
+      }
+
+      if (stats.kind === "melee" && stats.mods.choynado && p.spinTime > 0) {
+        p.spinTime -= dt;
+        p.spinTick -= dt;
+        if (p.spinTick <= 0) {
+          p.spinTick = 0.2;
+          zombies.forEach(z => {
+            const zCol = Math.floor(z.x / CELL_W);
+            const inThreeByFive = Math.abs(z.row - p.row) <= 1 && Math.abs(zCol - p.col) <= 2 && !(z.row === p.row && zCol === p.col);
+            if (!z.flying && inThreeByFive) z.hp -= stats.damage;
+          });
+        }
+      }
+
+      if (p.explode) {
+        const rad = Math.max(1, stats.radius);
+        zombies.forEach(z => {
+          const zCol = Math.floor(z.x / CELL_W);
+          if (Math.abs(z.row - p.row) <= rad && Math.abs(zCol - p.col) <= rad) z.hp -= (stats.damage || 3600) * (z.type === "gargantuar" ? (stats.gargBonus || 1.25) : 1);
+        });
+        if (stats.mods.burnGround) burns.push({ id: makeId("burn"), row: p.row, col: p.col, radius: rad, damage: stats.mods.burnGround, life: 4, tick: 0.5 });
+        p.hp = 0;
+      }
+    }
+
+    for (const burn of burns) {
+      if (burn.tick <= 0) {
+        burn.tick = 0.5;
+        zombies.forEach(z => {
+          const zCol = Math.floor(z.x / CELL_W);
+          if (Math.abs(z.row - burn.row) <= burn.radius && Math.abs(zCol - burn.col) <= burn.radius) z.hp -= burn.damage;
+        });
+      }
+    }
+
+    const hasSolarFlare = plants.some(p => p.type === "sunflower" && applyPlantStats("sunflower", s.plantMods, s).mods.sunShooter);
+    if (hasSolarFlare) {
+      const firingSuns = suns.filter(orb => orb.fromSunflower && orb.age >= 5 && zombies.some(z => z.row === orb.row && z.x > orb.x));
+      for (const orb of firingSuns) {
+        projectiles.push({ id: makeId("sunbolt"), row: orb.row ?? Math.floor(orb.y / CELL_H), x: orb.x, y: orb.y, damage: Math.max(35, orb.amount), speed: 310, pierce: 1, source: "sunflower", slow: 0, splash: 0, stun: 0, poison: 0, airMult: 1 });
+      }
+      if (firingSuns.length) suns = suns.filter(orb => !(orb.fromSunflower && orb.age >= 5 && zombies.some(z => z.row === orb.row && z.x > orb.x)));
+    }
+
+    allies = allies.map(a => ({ ...a, cd: Math.max(0, a.cd - dt), x: a.x + a.speed * dt })).filter(a => a.hp > 0 && a.x < BOARD_W + 80);
+    for (const ally of allies) {
+      const target = zombies.find(z => z.row === ally.row && Math.abs(z.x - ally.x) < 26);
+      if (target && ally.cd <= 0) {
+        target.hp -= ally.damage;
+        ally.cd = 0.45;
+      }
+      if (target && target.eatCd <= 0) {
+        ally.hp -= target.damage * 0.25;
+        target.eatCd = 0.45;
+      }
+    }
+
+    projectiles = projectiles.map(pr => ({ ...pr, x: pr.x + pr.speed * dt })).filter(pr => pr.x < BOARD_W + 80 && pr.pierce > 0);
+    for (const pr of projectiles) {
+      const target = zombies.find(z => z.row === pr.row && Math.abs(z.x - pr.x) < 22 && (!z.flying || z.groundedAir || pr.source === "cactus" || pr.source === "cabbagepult" || pr.source === "sunflower"));
+      if (target) {
+        const targetMods = s.zombieMods[target.type] || {};
+        target.hp -= pr.damage * (target.flying ? pr.airMult : 1) * (targetMods.damageTaken || 1);
+        if (pr.slow) target.slow = Math.max(target.slow, 2.5);
+        if (pr.stun && Math.random() < pr.stun) target.stun = Math.max(target.stun, 0.8);
+        if (pr.poison) target.poison = Math.max(target.poison, pr.poison);
+        if (pr.splash) zombies.forEach(other => { if (other.id !== target.id && other.row === target.row && Math.abs(other.x - target.x) < CELL_W) other.hp -= pr.damage * pr.splash * ((s.zombieMods[other.type] || {}).damageTaken || 1); });
+        pr.pierce -= 1;
+      }
+    }
+
+    zombies = zombies.map(z => {
+      const mods = s.zombieMods[z.type] || {};
+      const next = { ...z, eatCd: Math.max(0, z.eatCd - dt), slow: Math.max(0, z.slow - dt), stun: Math.max(0, z.stun - dt), throwCd: Math.max(0, z.throwCd - dt) };
+      if (next.poison) next.hp -= next.poison * dt;
+
+      if (next.type === "gargantuar" && next.throwCd <= 0) {
+        const landX = Math.max(2 * CELL_W, next.x - 5 * CELL_W);
+        if (mods.kaleImps) allies.push(createKaleImp(next.row, landX));
+        else zombies.push(createZombie(s, "imp", next.row, landX));
+        floaties.push({ id: makeId("throw"), text: mods.kaleImps ? "KALE!" : "IMP!", x: next.x, y: next.row * CELL_H + 10, life: 0.9 });
+        next.throwCd = 14;
+      }
+
+      const blocker = plants.find(p => {
+        const stats = applyPlantStats(p.type, s.plantMods, s);
+        return p.row === next.row && p.hp > 0 && stats.kind !== "spike" && next.x > p.col * CELL_W + 18 && next.x < p.col * CELL_W + 56 && (!next.flying || stats.blocksAir);
+      });
+
+      if (!blocker && next.type === "gargantuar" && next.eatCd <= 0) {
+        const spike = plants.find(p => p.type === "spikeweed" && p.row === next.row && p.hp > 0 && next.x > p.col * CELL_W + 12 && next.x < (p.col + 1) * CELL_W);
+        if (spike) {
+          if (mods.noSmash) {
+            next.stun = Math.max(next.stun, 0.15);
+            return next;
+          }
+          spike.hp = 0;
+          next.eatCd = 1.2;
+          floaties.push({ id: makeId("smash"), text: "SMASH!", x: spike.col * CELL_W + 14, y: spike.row * CELL_H + 18, life: 0.9 });
+        }
+      }
+
+      if (blocker) {
+        const pst = applyPlantStats(blocker.type, s.plantMods, s);
+        if (pst.mods.knockbackOnce && !blocker.knocked) {
+          next.x += 55;
+          blocker.knocked = true;
+        }
+        if (pst.mods.antiAirContact && next.flying) next.hp -= pst.mods.antiAirContact * dt;
+        if (next.eatCd <= 0 && !pst.mods.invulnerableFuse) {
+          const eatMult = next.type === "gargantuar" && mods.noSmash ? 0.18 : 0.34;
+          blocker.hp -= next.damage * (pst.mods.damageTakenMult || 1) * eatMult;
+          if (pst.mods.thorns) next.hp -= pst.mods.thorns;
+          next.eatCd = next.type === "gargantuar" && mods.noSmash ? 0.75 : 0.34;
+        }
+      } else if (next.stun <= 0) {
+        next.x -= next.speed * (next.slow > 0 ? 0.55 : 1) * dt;
+      }
+      return next;
+    });
+
+    for (const mower of mowers) {
+      if (!mower.active && s.mowerRecharge != null) {
+        mower.recharge -= dt;
+        if (mower.recharge <= 0) {
+          mower.active = true;
+          mower.recharge = 0;
+        }
+      }
+      const danger = zombies.find(z => z.row === mower.row && z.x < 8);
+      if (danger && mower.active) {
+        mower.active = false;
+        mower.recharge = s.mowerRecharge ?? Infinity;
+        zombies.forEach(z => { if (z.row === mower.row) z.hp -= s.mowerDamage; });
+        floaties.push({ id: makeId("mower"), text: "MOWER!", x: 20, y: mower.row * CELL_H + 26, life: 1.2 });
+      } else if (danger && !mower.active) {
+        gameOver = true;
+      }
+    }
+
+    plants.filter(p => p.hp <= 0).forEach(p => {
+      const stats = applyPlantStats(p.type, s.plantMods, s);
+      if (stats.mods.deathSun) sun = Math.min(s.maxSun, sun + stats.mods.deathSun);
+    });
+    plants = plants.filter(p => p.hp > 0);
+
+    const killed = zombies.filter(z => z.hp <= 0);
+    for (const z of killed) {
+      score += z.points;
+      roguePoints += z.points;
+      if (Math.random() < s.zombieSunDrop) {
+        sun = Math.min(s.maxSun, sun + 25);
+        floaties.push({ id: makeId("drop"), text: "+25☀", x: z.x, y: z.row * CELL_H + 20, life: 1 });
+      }
+    }
+    zombies = zombies.filter(z => z.hp > 0);
+    projectiles = projectiles.filter(p => p.pierce > 0);
+    floaties = floaties.filter(f => f.life > 0);
+
+    while (roguePoints >= nextBuffAt) {
+      sun = Math.min(s.maxSun, sun + 250);
+      floaties.push({ id: makeId("rpSun"), text: "+250☀", x: BOARD_W / 2 - 30, y: 18, life: 1.1 });
+      pausedForBuff = true;
+      const minRarity = milestoneMinRarity(nextBuffAt);
+      choices = makeChoices({ ...s, sun, maxSun: s.maxSun, roguePoints, nextBuffAt, draftMinRarity: minRarity }, minRarity);
+      nextBuffAt += 10;
+      break;
+    }
+
+    return { ...s, plants, zombies, allies, projectiles, floaties, suns, burns, mowers, sun, score, roguePoints, nextBuffAt, pausedForBuff, draftMode: "normal", choices, gameOver };
+  }
+
+  function collectSun(id) {
+    setState(prev => {
+      const orb = (prev.suns || []).find(s => s.id === id);
+      if (!orb) return prev;
+      const sunflowerStats = applyPlantStats("sunflower", prev.plantMods, prev);
+      const rogueGain = orb.fromSunflower && sunflowerStats.mods.rogueSun ? 0.1 : 0;
+      let next = {
+        ...prev,
+        sun: Math.min(prev.maxSun, prev.sun + orb.amount),
+        roguePoints: prev.roguePoints + rogueGain,
+        suns: prev.suns.filter(s => s.id !== id),
+        floaties: [...prev.floaties, { id: makeId("collect"), text: rogueGain ? `+${orb.amount}☀ +0.1 RP` : `+${orb.amount}☀`, x: orb.x, y: orb.y, life: 0.8 }],
+      };
+      if (rogueGain && next.roguePoints >= next.nextBuffAt && !next.pausedForBuff && !next.gameOver) {
+        const minRarity = milestoneMinRarity(next.nextBuffAt);
+        next = { ...next, sun: Math.min(next.maxSun, next.sun + 250), pausedForBuff: true, draftMode: "normal", draftMinRarity: minRarity, choices: makeChoices({ ...next, draftMinRarity: minRarity }, minRarity), nextBuffAt: next.nextBuffAt + 10 };
+      }
+      return next;
+    });
+  }
+
+  function place(row, col) {
+    setState(prev => {
+      if (prev.pausedForBuff || prev.gameOver) return prev;
+      const existing = prev.plants.find(p => p.row === row && p.col === col);
+      if (prev.shovel) {
+        if (!existing) return prev;
+        const refund = Math.round(cardCost(existing.type, prev) * prev.shovelRefund);
+        return { ...prev, plants: prev.plants.filter(p => p.id !== existing.id), sun: Math.min(prev.maxSun, prev.sun + refund), shovel: false };
+      }
+      const cost = cardCost(prev.selected, prev);
+      if (prev.sun < cost) return prev;
+      if (existing && prev.selected !== "cherrybomb") return prev;
+      const newPlant = createPlant(prev.selected, row, col, prev);
+      const plants = prev.selected === "cherrybomb" && existing
+        ? [...prev.plants.filter(p => p.id !== existing.id), newPlant]
+        : [...prev.plants, newPlant];
+      return { ...prev, sun: prev.sun - cost, plants, plantsPlaced: prev.plantsPlaced + 1 };
+    });
+  }
+
+  function chooseBuff(choice) {
+    if (buffPickLocked) return;
+    setState(prev => {
+      let next = { ...prev };
+      if (choice.type === "plantJackpot") {
+        const plantKeys = Object.keys(plantDefs);
+        const randomPlant = plantKeys[Math.floor(Math.random() * plantKeys.length)];
+        next = applyMissingBuffsForPlant(next, choice.plant);
+        next = applyMissingBuffsForPlant(next, randomPlant);
+        next.buffLog = [
+          { name: `Jackpot Pick: ${plantDefs[choice.plant].name}`, desc: `Gained every missing ${plantDefs[choice.plant].name} buff.`, rarity: "Legendary", type: "global", target: choice.plant },
+          { name: `Hidden Jackpot: ${plantDefs[randomPlant].name}`, desc: `Also gained every missing ${plantDefs[randomPlant].name} buff.`, rarity: "Legendary", type: "global", target: randomPlant },
+          ...next.buffLog,
+        ];
+        return { ...next, pausedForBuff: false, draftMode: "normal", draftMinRarity: null, pendingDebuffDrafts: 0, pendingPlantJackpot: false, choices: [] };
+      }
+
+      if (choice.type === "plant") {
+        next.plantMods = { ...prev.plantMods, [choice.plant]: choice.fn(prev.plantMods[choice.plant] || {}) };
+        const current = new Set((prev.perPlantBuffNames && prev.perPlantBuffNames[choice.plant]) || []);
+        const wasMaxed = isPlantMaxBuffed(prev, choice.plant);
+        current.add(choice.name);
+        next.perPlantBuffNames = { ...(prev.perPlantBuffNames || {}), [choice.plant]: [...current] };
+        if (!wasMaxed && isPlantMaxBuffed(next, choice.plant)) {
+          next.buffLog = [{ name: `${plantDefs[choice.plant].name} Max Buffed!`, desc: `You have every ${plantDefs[choice.plant].name} buff.`, rarity: "Legendary", type: "global", target: choice.plant }, ...next.buffLog];
+          next.floaties = [...(next.floaties || []), { id: makeId("maxed"), text: `${plantDefs[choice.plant].name} MAX!`, x: BOARD_W / 2 - 55, y: 42, life: 2 }];
+        }
+      } else if (choice.type === "global") {
+        next = choice.fn({ ...next, mowers: next.mowers.map(m => ({ ...m })) });
+      } else if (choice.type === "debuff") {
+        next.zombieMods = choice.fn(prev.zombieMods);
+      }
+
+      next.buffCount = prev.buffCount + 1;
+      next.pickedBuffNames = [...new Set([...(prev.pickedBuffNames || []), choice.name])];
+      next.buffLog = [{ name: choice.name, desc: choice.desc, rarity: choice.rarity, type: choice.type, target: choice.plant || choice.zombie || "Global" }, ...prev.buffLog];
+
+      if (choice.name === "Jackpot") return startPlantJackpotDraft(next);
+
+      if (choice.name === "Unlock Zombie Debuffs") return startDebuffDraft(next, 3);
+      if (prev.draftMode === "debuff") {
+        const remaining = Math.max(0, prev.pendingDebuffDrafts - 1);
+        if (remaining > 0) return startDebuffDraft({ ...next, pendingDebuffDrafts: remaining }, remaining);
+      }
+      return { ...next, pausedForBuff: false, draftMode: "normal", draftMinRarity: null, pendingDebuffDrafts: 0, choices: [] };
+    });
+  }
+
+  function restart() {
+    localStorage.removeItem(SAVE_KEY);
+    setState(baseState());
+    lastTick.current = Date.now();
+  }
+
+  async function copyBuffs() {
+    setCopyNote("");
+    const ok = await robustCopy(makeBuildCopyText(state, scaling));
+    setCopyNote(ok ? "Copied!" : "Copy failed");
+    setTimeout(() => setCopyNote(""), 1400);
+  }
+
+  async function copyOfferedBuffs() {
+    setOfferCopyNote("");
+    const ok = await robustCopy(makeOfferCopyText(state.choices, state, scaling));
+    setOfferCopyNote(ok ? "Copied!" : "Copy failed");
+    setTimeout(() => setOfferCopyNote(""), 1400);
+  }
+
+  return (
+    <div className="min-h-screen overflow-x-auto bg-gradient-to-b from-emerald-950 via-green-900 to-lime-950 p-2 text-white">
+      <div className="mx-auto w-fit space-y-2">
+        <div className="flex max-w-[940px] items-end justify-between gap-2">
+          <div>
+            <h1 className="text-xl font-black tracking-tight">PvZ Rogue</h1>
+            <p className="max-w-md text-xs text-lime-100/80">Every 10 rogue points gives a buff. Each buff makes zombies 1.2x stronger.</p>
+          </div>
+          <div className="flex flex-wrap justify-end gap-1.5 text-xs">
+            <Badge>☀ {Math.floor(state.sun)} / {state.maxSun}</Badge>
+            <Badge>Rogue {fmt(state.roguePoints, 1)} / {state.nextBuffAt}</Badge>
+            <Badge>Buffs {state.buffCount}</Badge>
+            <Badge>Scale {scaling}x</Badge>
+            <Button onClick={() => setState(s => ({ ...s, running: !s.running }))} className="h-7 rounded-lg px-2 text-xs">{state.running ? "Pause" : "Resume"}</Button>
+            <Button onClick={restart} variant="secondary" className="h-7 rounded-lg px-2 text-xs">Restart</Button>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-2">
+          <Card className="w-[106px] shrink-0 rounded-xl border-white/15 bg-white/10 text-white shadow-xl">
+            <CardContent className="space-y-1 p-1">
+              <div className="text-[10px] font-bold">Seeds</div>
+              <div className="grid grid-cols-1 gap-1">
+                {plantCards.map(type => {
+                  const def = plantDefs[type];
+                  const cost = cardCost(type, state);
+                  const selected = state.selected === type && !state.shovel;
+                  return (
+                    <button key={type} onClick={() => setState(s => ({ ...s, selected: type, shovel: false }))} className={`flex items-center gap-1 rounded-md border px-1 py-0.5 text-left transition ${selected ? "border-lime-100 bg-lime-300 text-green-950" : "border-white/10 bg-black/25 hover:bg-white/15"}`}>
+                      <div className="w-5 shrink-0 leading-none"><PlantSprite type={type} small /></div>
+                      <div className="min-w-0">
+                        <div className="max-w-[72px] truncate text-[8px] font-bold leading-tight">{def.name}</div>
+                        <div className="text-[8px] leading-tight">{cost}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <Button onClick={() => setState(s => ({ ...s, shovel: !s.shovel }))} variant={state.shovel ? "default" : "secondary"} className="h-6 w-full rounded-md px-1 text-[9px]">{state.shovel ? "Shovel on" : "Shovel"}</Button>
+              <div className="text-[8px] leading-tight text-lime-100/65">Hover sun.</div>
+            </CardContent>
+          </Card>
+
+          <div className="relative shrink-0 overflow-hidden rounded-xl border border-white/15 bg-green-800 shadow-2xl" style={{ width: BOARD_W, height: BOARD_H }}>
+            <div className="absolute inset-0">
+              {Array.from({ length: ROWS * COLS }).map((_, i) => {
+                const row = Math.floor(i / COLS);
+                const col = i % COLS;
+                return <button key={i} onClick={() => place(row, col)} className={`absolute select-none border border-black/15 ${((row + col) % 2) ? "bg-lime-700/55" : "bg-green-700/65"} hover:bg-lime-300/30`} style={{ left: col * CELL_W, top: row * CELL_H, width: CELL_W, height: CELL_H }} />;
+              })}
+            </div>
+
+            {state.mowers.map(m => <div key={m.row} className={`pointer-events-none select-none absolute z-20 rounded-xl px-1 text-2xl ${m.active ? "opacity-100" : "opacity-25"}`} style={{ left: 4, top: m.row * CELL_H + 20 }}>{m.active ? "🚜" : "⚙️"}</div>)}
+            {state.burns.map(b => <div key={b.id} className="pointer-events-none select-none absolute z-10 rounded-full bg-orange-500/35 blur-sm" style={{ left: (b.col - b.radius) * CELL_W, top: (b.row - b.radius) * CELL_H, width: (b.radius * 2 + 1) * CELL_W, height: (b.radius * 2 + 1) * CELL_H }} />)}
+
+            {state.plants.map(p => {
+              const def = plantDefs[p.type];
+              const plantAction = p.type === "chomper" && p.cd > 0.2 ? "chew" : p.type === "bonkchoy" && p.spinTime > 0 ? "spin" : p.cd > 0.05 ? "attack" : "idle";
+              const chewingPct = p.type === "chomper" && p.cd > 0.2 ? clamp((p.cd / Math.max(0.1, p.chewMax || p.cd)) * 100, 0, 100) : 0;
+              const spinPct = p.type === "bonkchoy" && p.spinTime > 0 ? clamp((p.spinTime / 3) * 100, 0, 100) : 0;
+              return (
+                <div key={p.id} className="pointer-events-none select-none absolute z-30 flex flex-col items-center justify-center" style={{ left: p.col * CELL_W + 6, top: p.row * CELL_H + 4, width: CELL_W - 12, height: CELL_H - 8 }}>
+                  <PlantSprite type={p.type} action={plantAction} />
+                  <div className="h-1.5 w-12 overflow-hidden rounded-full bg-black/40"><div className="h-full bg-lime-300" style={{ width: `${healthPct(p)}%` }} /></div>
+                  {chewingPct > 0 && <div className="mt-0.5 h-1.5 w-12 overflow-hidden rounded-full bg-black/45" title="Chewing"><div className="h-full bg-purple-300" style={{ width: `${chewingPct}%` }} /></div>}
+                  {spinPct > 0 && <div className="mt-0.5 h-1.5 w-12 overflow-hidden rounded-full bg-black/45" title="Choynado"><div className="h-full bg-yellow-300" style={{ width: `${spinPct}%` }} /></div>}
+                </div>
+              );
+            })}
+
+            {state.projectiles.map(pr => <div key={pr.id} className="pointer-events-none select-none absolute z-40 text-lg" style={{ left: pr.x, top: pr.y }}>{pr.source === "cabbagepult" ? "🥬" : pr.source === "cactus" ? "•" : pr.source === "sunflower" ? "☀️" : "🟢"}</div>)}
+            {(state.allies || []).map(a => <div key={a.id} className="pointer-events-none select-none absolute z-45 flex flex-col items-center" style={{ left: a.x, top: a.row * CELL_H + 14 }}><AllySprite ally={a} /><div className="h-1 w-10 overflow-hidden rounded-full bg-black/40"><div className="h-full bg-lime-200" style={{ width: `${healthPct(a)}%` }} /></div></div>)}
+            {(state.suns || []).map(orb => <button key={orb.id} onMouseEnter={() => collectSun(orb.id)} className="absolute z-[75] text-2xl drop-shadow-lg transition hover:scale-125" style={{ left: orb.x, top: orb.y }} title={`Collect ${orb.amount} sun`}>☀️</button>)}
+
+            {state.zombies.map(z => {
+              const def = zombieDefs[z.type];
+              const zombieAction = z.eatCd > 0 ? "eat" : "walk";
+              const noSmash = !!state.zombieMods[z.type]?.noSmash;
+              return (
+                <div key={z.id} className="pointer-events-none select-none absolute z-50 flex flex-col items-center" style={{ left: z.x, top: z.row * CELL_H + (z.flying ? 0 : 12), transform: z.flying ? "translateY(-8px)" : "none" }}>
+                  <ZombieSprite type={z.type} hpPct={healthPct(z)} action={zombieAction} noSmash={noSmash} flying={z.flying} groundedAir={z.groundedAir} />
+                  <div className="h-1.5 w-14 overflow-hidden rounded-full bg-black/45"><div className="h-full bg-red-400" style={{ width: `${healthPct(z)}%` }} /></div>
+                  {z.slow > 0 && <div className="text-[10px]">slow</div>}
+                </div>
+              );
+            })}
+
+            <AnimatePresence>{state.floaties.map(f => <motion.div key={f.id} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="pointer-events-none select-none absolute z-[80] font-black text-yellow-200" style={{ left: f.x, top: f.y }}>{f.text}</motion.div>)}</AnimatePresence>
+            {state.gameOver && <Overlay title="Game Over" subtitle={`You scored ${state.score} rogue points and picked ${state.buffCount} buffs.`} action={restart} actionText="Play Again" />}
+            {!state.running && !state.gameOver && <Overlay title="Paused" subtitle="Press Resume to continue." action={() => setState(s => ({ ...s, running: true }))} actionText="Resume" />}
+          </div>
+
+          <Card className="w-[190px] shrink-0 rounded-xl border-white/15 bg-white/10 text-white shadow-xl">
+            <CardContent className="space-y-2 p-2">
+              <div className="text-sm font-bold">Run Log</div>
+              <div className="space-y-1 text-xs">
+                <div>Score: <b>{state.score}</b></div>
+                <div>Debuffs: <b>{state.debuffsUnlocked ? "Unlocked" : "Locked"}</b></div>
+                <div>Unlocked zombies: <b>{Object.values(zombieDefs).filter(z => z.unlock <= state.buffCount).length}/6</b></div>
+                <div>Mower recharge: <b>{state.mowerRecharge == null ? "off" : `${state.mowerRecharge}s`}</b></div>
+                <div>Max buffed: <b>{maxedPlants.length ? maxedPlants.map(p => plantDefs[p].name).join(", ") : "none"}</b></div>
+              </div>
+              <div className="flex items-center justify-between gap-1 pt-1"><div className="text-sm font-bold">All Buffs</div><Button onClick={copyBuffs} variant="secondary" className="h-6 rounded-md px-1.5 text-[9px]">Copy</Button></div>
+              {copyNote && <div className={`text-[9px] ${copyNote === "Copied!" ? "text-yellow-200" : "text-red-200"}`}>{copyNote}</div>}
+              <div className="max-h-[210px] space-y-1 overflow-auto pr-1">
+                {state.buffLog.length === 0 && <div className="text-sm text-lime-100/70">No buffs yet.</div>}
+                {state.buffLog.map((b, i) => <div key={`${b.name}_${i}`} className={`rounded-lg border p-1.5 ${RARITY_STYLES[b.rarity || "Common"]}`}><div className="text-[8px] uppercase tracking-wide text-lime-100/60">{b.rarity || "Common"} · {b.target}</div><div className="text-xs font-bold">{b.name}</div><div className="text-[10px] text-lime-100/75">{b.desc}</div></div>)}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {state.pausedForBuff && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+            <Card className="w-full max-w-5xl rounded-3xl border-lime-300/30 bg-emerald-950 text-white shadow-2xl">
+              <CardContent className="space-y-4 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-2xl font-black">{state.draftMode === "debuff" ? `Pick Zombie Debuff (${state.pendingDebuffDrafts} left)` : state.draftMode === "plantJackpot" ? "Pick Jackpot Plant" : "Pick a Buff"}</h2>
+                    <p className="text-sm text-lime-100/75">{state.draftMode === "debuff" ? "Bonus draft from Unlock Zombie Debuffs." : state.draftMode === "plantJackpot" ? "Choose one plant to jackpot. You also get one hidden random plant jackpot." : `Next zombie scale: ${scaling}x → ${(Math.pow(1.2, state.buffCount + 1)).toFixed(2)}x.${state.draftMinRarity ? ` Guaranteed ${state.draftMinRarity}+ choices.` : ""}`}</p>
+                    {offerCopyNote && <div className={`mt-1 text-xs ${offerCopyNote === "Copied!" ? "text-yellow-200" : "text-red-200"}`}>{offerCopyNote}</div>}
+                  </div>
+                  <Button onClick={copyOfferedBuffs} variant="secondary" className="rounded-xl px-3 text-xs">Copy Offered</Button>
+                </div>
+                <div className={`grid gap-3 ${state.choices.length > 3 ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
+                  {state.choices.map((c, idx) => <BuffCard key={`${c.name}_${idx}`} choice={c} idx={idx} state={state} chooseBuff={chooseBuff} locked={buffPickLocked} />)}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function BuffCard({ choice, idx, state, chooseBuff, locked }) {
+  const target = choice.type === "plant" || choice.type === "plantJackpot" ? plantDefs[choice.plant].name : choice.type === "debuff" ? "Zombie Debuff" : "Global";
+  return (
+    <button disabled={locked} onClick={() => chooseBuff(choice)} className={`rounded-3xl border p-4 text-left transition ${locked ? "cursor-not-allowed opacity-60" : "hover:scale-[1.02]"} ${RARITY_STYLES[choice.rarity || "Common"]}`}>
+      <div className="text-xs uppercase tracking-widest text-lime-100/60">{choice.rarity || "Common"} · {target}</div>
+      <div className="mt-1 text-xl font-black">{choice.name}</div>
+      <div className="mt-2 text-sm text-lime-100/80">{choice.desc}</div>
+      <div className="mt-3 whitespace-pre-line rounded-xl bg-black/25 p-2 text-xs text-lime-100/85">{buffPreview(choice, state)}</div>
+      {state.debuffsUnlocked && state.draftMode !== "debuff" && idx === state.choices.length - 1 && <div className="mt-3 text-xs font-bold text-red-200">Right slot debuff</div>}
+    </button>
+  );
+}
+
+function Badge({ children }) {
+  return <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-1 font-bold">{children}</div>;
+}
+
+function Overlay({ title, subtitle, action, actionText }) {
+  return (
+    <div className="absolute inset-0 z-[90] flex items-center justify-center bg-black/65 backdrop-blur-sm">
+      <div className="max-w-sm rounded-3xl border border-lime-300/30 bg-emerald-950 p-6 text-center shadow-2xl">
+        <div className="text-3xl font-black">{title}</div>
+        <div className="mt-2 text-sm text-lime-100/75">{subtitle}</div>
+        <Button onClick={action} className="mt-4 rounded-2xl">{actionText}</Button>
+      </div>
+    </div>
+  );
+}
