@@ -1,7 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+<!doctype html>
+<html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<title>PvZ Rogue</title></head><body><div id="root"></div>
+<script type="module">
+import React, { useEffect, useMemo, useRef, useState } from "https://esm.sh/react@18.3.1";
+import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
+import { AnimatePresence, motion } from "https://esm.sh/framer-motion@11.11.17";
 
 const ROWS = 5;
 const COLS = 9;
@@ -1872,7 +1876,7 @@ if (typeof window !== "undefined" && !window.__PVZ_ROGUE_TESTED__) {
   runDevTests();
 }
 
-export default function PvZRoguePrototype() {
+function PvZRoguePrototype() {
   const [state, setState] = useState(() => {
     try {
       const saved = localStorage.getItem(SAVE_KEY);
@@ -1896,7 +1900,7 @@ export default function PvZRoguePrototype() {
   useEffect(() => {
     const id = setInterval(() => {
       try {
-        localStorage.setItem(SAVE_KEY, JSON.stringify({ ...stateRef.current, running: false, pausedForBuff: false, choices: [] }));
+        localStorage.setItem(SAVE_KEY, JSON.stringify({ ...stateRef.current, running: false }));
       } catch {
         // Ignore save failures.
       }
@@ -1951,15 +1955,16 @@ export default function PvZRoguePrototype() {
     let gameOver = false;
 
     s.skySunMeter += dt * s.skySunRate;
-    if (s.skySunMeter >= currentSkySunInterval(s)) {
-      s.skySunMeter = 0;
+    const skyInterval = currentSkySunInterval(s);
+    while (s.skySunMeter >= skyInterval) {
+      s.skySunMeter -= skyInterval;
       const amount = Math.round(50 * s.sunValueMult);
       suns.push({ id: makeId("sun"), amount, x: 28 + Math.random() * (BOARD_W - 70), y: 24 + Math.random() * (BOARD_H - 70), life: 12, age: 0 });
     }
 
     s.spawnMeter += dt;
-    if (s.spawnMeter >= 5) {
-      s.spawnMeter = 0;
+    while (s.spawnMeter >= 5) {
+      s.spawnMeter -= 5;
       zombies.push(createZombie(s));
     }
 
@@ -2013,7 +2018,7 @@ export default function PvZRoguePrototype() {
 
       if (stats.kind === "melee" && next.cd <= 0) {
         const hitRows = stats.mods.crossLane || stats.mods.choynado ? [next.row - 1, next.row, next.row + 1] : [next.row];
-        const hitCols = stats.mods.choynado ? [next.col - 2, next.col - 1, next.col, next.col + 1, next.col + 2] : [next.col - 2, next.col - 1, next.col + 1, next.col + 2];
+        const hitCols = stats.mods.choynado ? [next.col - 2, next.col - 1, next.col, next.col + 1, next.col + 2] : [next.col - 1, next.col, next.col + 1];
         const targets = zombies.filter(z => !z.flying && hitRows.includes(z.row) && hitCols.includes(Math.floor(z.x / CELL_W)) && !(stats.mods.choynado && z.row === next.row && Math.floor(z.x / CELL_W) === next.col));
         if (targets.length) {
           const target = targets[0];
@@ -2125,9 +2130,11 @@ export default function PvZRoguePrototype() {
       }
     }
 
-    projectiles = projectiles.map(pr => ({ ...pr, x: pr.x + pr.speed * dt })).filter(pr => pr.x < BOARD_W + 80 && pr.pierce > 0);
+    projectiles = projectiles.map(pr => ({ ...pr, prevX: pr.x, x: pr.x + pr.speed * dt })).filter(pr => pr.x < BOARD_W + 80 && pr.pierce > 0);
     for (const pr of projectiles) {
-      const target = zombies.find(z => z.row === pr.row && Math.abs(z.x - pr.x) < 22 && (!z.flying || z.groundedAir || pr.source === "cactus" || pr.source === "cabbagepult" || pr.source === "sunflower"));
+      const minX = Math.min(pr.prevX ?? pr.x, pr.x) - 22;
+      const maxX = Math.max(pr.prevX ?? pr.x, pr.x) + 22;
+      const target = zombies.find(z => z.row === pr.row && z.x >= minX && z.x <= maxX && (!z.flying || z.groundedAir || pr.source === "cactus" || pr.source === "cabbagepult" || pr.source === "sunflower"));
       if (target) {
         const targetMods = s.zombieMods[target.type] || {};
         target.hp -= pr.damage * (target.flying ? pr.airMult : 1) * (targetMods.damageTaken || 1);
@@ -2253,7 +2260,7 @@ export default function PvZRoguePrototype() {
         suns: prev.suns.filter(s => s.id !== id),
         floaties: [...prev.floaties, { id: makeId("collect"), text: rogueGain ? `+${orb.amount}☀ +0.1 RP` : `+${orb.amount}☀`, x: orb.x, y: orb.y, life: 0.8 }],
       };
-      if (rogueGain && next.roguePoints >= next.nextBuffAt && !next.pausedForBuff && !next.gameOver) {
+      while (rogueGain && next.roguePoints >= next.nextBuffAt && !next.pausedForBuff && !next.gameOver) {
         const minRarity = milestoneMinRarity(next.nextBuffAt);
         next = { ...next, sun: Math.min(next.maxSun, next.sun + 250), pausedForBuff: true, draftMode: "normal", draftMinRarity: minRarity, choices: makeChoices({ ...next, draftMinRarity: minRarity }, minRarity), nextBuffAt: next.nextBuffAt + 10 };
       }
@@ -2314,7 +2321,7 @@ export default function PvZRoguePrototype() {
         next.zombieMods = choice.fn(prev.zombieMods);
       }
 
-      next.buffCount = prev.buffCount + 1;
+      if (choice.type !== "debuff") next.buffCount = prev.buffCount + 1;
       next.pickedBuffNames = [...new Set([...(prev.pickedBuffNames || []), choice.name])];
       next.buffLog = [{ name: choice.name, desc: choice.desc, rarity: choice.rarity, type: choice.type, target: choice.plant || choice.zombie || "Global" }, ...prev.buffLog];
 
@@ -2515,3 +2522,21 @@ function Overlay({ title, subtitle, action, actionText }) {
     </div>
   );
 }
+
+function Button({ children, className = "", variant = "default", ...props }) {
+  const variantCls = variant === "secondary" ? "bg-white/20 hover:bg-white/30" : "bg-lime-300 text-green-950 hover:bg-lime-200";
+  return <button className={`border border-white/15 px-2 py-1 font-semibold ${variantCls} ${className}`} {...props}>{children}</button>;
+}
+
+function Card({ children, className = "" }) {
+  return <div className={className}>{children}</div>;
+}
+
+function CardContent({ children, className = "" }) {
+  return <div className={className}>{children}</div>;
+}
+
+const mount = document.getElementById("root");
+if (mount) createRoot(mount).render(<PvZRoguePrototype />);
+
+</script></body></html>
