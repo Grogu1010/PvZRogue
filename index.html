@@ -2127,7 +2127,7 @@ function PvZRoguePrototype() {
     if (hasSolarFlare) {
       const firingSuns = suns.filter(orb => orb.fromSunflower && orb.age >= 5 && zombies.some(z => z.row === orb.row && z.x > orb.x));
       for (const orb of firingSuns) {
-        projectiles.push({ id: makeId("sunbolt"), row: orb.row ?? Math.floor(orb.y / CELL_H), x: orb.x, y: orb.y, damage: Math.max(35, orb.amount), speed: 310, pierce: 1, source: "sunflower", slow: 0, splash: 0, stun: 0, poison: 0, airMult: 1 });
+        projectiles.push({ id: makeId("sunbolt"), row: orb.row ?? Math.floor(orb.y / CELL_H), x: orb.x, y: orb.y, damage: 1000, speed: 310, pierce: 1, source: "sunflower", slow: 0, splash: 0, stun: 0, poison: 0, airMult: 1 });
       }
       if (firingSuns.length) suns = suns.filter(orb => !(orb.fromSunflower && orb.age >= 5 && zombies.some(z => z.row === orb.row && z.x > orb.x)));
     }
