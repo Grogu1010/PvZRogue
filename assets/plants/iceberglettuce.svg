@@ -1,0 +1,5 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>
+<ellipse cx='32' cy='56' rx='18' ry='5' fill='#000' opacity='.18'/>
+<circle cx='32' cy='30' r='16' fill='#6ccf63' stroke='#2f7f32' stroke-width='2'/>
+<text x='32' y='35' text-anchor='middle' font-size='8' font-family='Arial' fill='#103814'>ic</text>
+</svg>
