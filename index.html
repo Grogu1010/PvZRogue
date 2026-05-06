@@ -49,6 +49,11 @@ const plantDefs = {
   cactus: { name: "Cactus", icon: "🌵", cost: 150, hp: 340, kind: "shooter", damage: 28, fireRate: 1.15, hitsAir: true },
   cabbagepult: { name: "Cabbage Pult", icon: "🥬", cost: 100, hp: 300, kind: "lobber", damage: 34, fireRate: 1.7, hitsAir: true },
   bonkchoy: { name: "Bonk Choy", icon: "🥊", cost: 150, hp: 420, kind: "melee", damage: 18, punchRate: 3.5 },
+  laserbean: { name: "Laser Bean", icon: "🫘", cost: 200, hp: 320, kind: "shooter", damage: 34, fireRate: 1.35, hitsAir: true },
+  sunshroom: { name: "Sun Shroom", icon: "🍄", cost: 25, hp: 220, kind: "sun", sunRate: 7.5, sunAmount: 25 },
+  snapdragon: { name: "Snapdragon", icon: "🐲", cost: 150, hp: 430, kind: "flame", damage: 30, fireRate: 1.5, range: 3 },
+  torchwood: { name: "Torchwood", icon: "🔥", cost: 175, hp: 800, kind: "torchwood" },
+  iceberglettuce: { name: "Iceberg Lettuce", icon: "🧊", cost: 0, hp: 190, kind: "iceberg", freezeRadius: 0, freezeTime: 6 },
 };
 
 const zombieDefs = {
@@ -64,7 +69,7 @@ function rarityForBuff(name) {
   const epic = new Set(["Split Peas", "Solar Flare", "Tall-but-skinny Nut", "Staggering Wall", "Toxic Burp", "Cluster Bomb", "Buried Roots", "Needle Storm", "Splash Cabbage", "Fourteen-Armed Choynado"]);
   const rare = new Set(["Piercing Peas", "Frozen Peas", "Twinflower", "Golden Petals", "Rogue Petals", "Spiky Shell", "Nut Repair", "Towering", "Auto Patch", "Long Tongue", "Spare Teeth", "Backbite Vines", "Bigger Boom", "Afterburn", "Sticky Spikes", "Tire Popper", "Balloon Hunter", "Piercing Needles", "Stunning Slaw", "Rotten Cabbage", "Siege Cabbage", "Mower Workshop", "Lucky Packet", "Root Network", "Battlefield Salvage", "Last Stand", "Bomb School", "Cross Counter", "Spinach Surge"]);
   const uncommon = new Set(["Bigger Peas", "Quick Sprouts", "Overgrowth", "Fast Bloom", "Sunburst", "Emergency Photosynthesis", "Hard Shell", "Panic Shell", "Stone Nut", "Air Stopper", "Iron Crown", "Hungry", "Big Mouth", "Predator Plant", "Stronger Boom", "Sunfire", "Double Stem", "Doom Cherry", "Sharper Spikes", "Rapid Pricks", "Spikerock Dream", "Sharper Needles", "Fast Needles", "Prickly Legend", "Heavy Cabbage", "Quick Toss", "Double Toss", "Royal Cabbage", "Garden Fertilizer", "Compost Armor", "Solar Winds", "Photosynthesis", "Garden Haste", "Nut Union", "Faster Fists", "Heavy Jabs", "Guard Stance"]);
-  if (name === "Unlock Zombie Debuffs" || name === "Evergreen Drafts" || name === "Jackpot") return "Legendary";
+  if (name === "Unlock Zombie Debuffs" || name === "Evergreen Drafts" || name === "Jackpot" || name === "Seed Vault") return "Legendary";
   if (epic.has(name)) return "Epic";
   if (rare.has(name)) return "Rare";
   if (uncommon.has(name)) return "Uncommon";
@@ -200,6 +205,30 @@ const plantBuffs = {
   ],
 };
 
+
+  laserbean: [
+    ["Beam Focus", "+30% laser damage", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.3 })],
+    ["Prism Polish", "+20% fire rate", p => ({ ...p, fireRateMult: (p.fireRateMult || 1) * 1.2 })],
+    ["Long Lens", "+80 HP", p => ({ ...p, hpFlat: (p.hpFlat || 0) + 80 })],
+    ["Steady Core", "Cost -20 sun", p => ({ ...p, costFlat: (p.costFlat || 0) - 20 })],
+    ["Neon Charge", "+15% damage", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.15 })],
+    ["Optic Shell", "+60 HP", p => ({ ...p, hpFlat: (p.hpFlat || 0) + 60 })],
+    ["Refraction", "Beam slows zombies", p => ({ ...p, slowOnHit: (p.slowOnHit || 0) + 0.12 })],
+    ["Laser Overclock", "+35% damage", p => ({ ...p, damageMult: (p.damageMult || 1) * 1.35 })],
+    ["Penetrator", "Pierces +2 targets", p => ({ ...p, pierce: (p.pierce || 1) + 2 })],
+    ["Sky Cutter", "Deals bonus damage to flying", p => ({ ...p, airDamageMult: (p.airDamageMult || 1) * 1.55 })],
+    ["Mirror Finish", "+30% fire rate", p => ({ ...p, fireRateMult: (p.fireRateMult || 1) * 1.3 })],
+    ["Photon Lance", "Rare: every 5th beam crits", p => ({ ...p, critEvery: 5, critMult: 2 })],
+    ["Solar Spectrum", "Rare: kills grant 15 sun", p => ({ ...p, killSun: (p.killSun || 0) + 15 })],
+    ["Crossline Burn", "Rare: splashes adjacent lanes", p => ({ ...p, crossLane: true })],
+    ["Infinity Beam", "Epic: laser chains through entire lane and ignores shields", p => ({ ...p, infinityBeam: true })],
+  ],
+  sunshroom: Array.from({length:15}).map((_,i)=>["Sun Shroom Buff "+(i+1),"Boost",p=>p]),
+  snapdragon: Array.from({length:15}).map((_,i)=>["Snapdragon Buff "+(i+1),"Boost",p=>p]),
+  torchwood: Array.from({length:15}).map((_,i)=>["Torchwood Buff "+(i+1),"Boost",p=>p]),
+  iceberglettuce: Array.from({length:15}).map((_,i)=>["Iceberg Buff "+(i+1),"Boost",p=>p]),
+};
+
 const globalBuffs = [
   ["Garden Fertilizer", "All plants gain +12% damage", s => ({ ...s, allDamage: s.allDamage * 1.12 })],
   ["Compost Armor", "All plants gain +15% HP", s => ({ ...s, allHp: s.allHp * 1.15 })],
@@ -226,6 +255,8 @@ const globalBuffs = [
   ["Unlock Zombie Debuffs", "Legendary: immediately draft 3 zombie debuffs, then future right-side choices are debuffs", s => ({ ...s, debuffsUnlocked: true, pendingDebuffDrafts: 3 })],
   ["Evergreen Drafts", "Legendary: plant/global buffs can appear again, and every repeatable buff you already got triggers once more", s => applyEvergreenEchoes({ ...s, allowBuffRepeats: true })],
   ["Jackpot", "Legendary: choose a plant to jackpot, then also jackpot one hidden random plant", s => ({ ...s, pendingPlantJackpot: true })],
+  ["Tactical Resupply", "Epic: switch up to 3 plants in your seed loadout mid-game", s => ({ ...s, midgameSwaps: (s.midgameSwaps || 0) + 3 })],
+  ["Seed Vault", "Legendary: increase active seed slots by +4", s => ({ ...s, seedSlots: Math.min(Object.keys(plantDefs).length, (s.seedSlots || 8) + 4) })],
 ];
 
 const zombieDebuffs = {
@@ -325,6 +356,9 @@ function baseState() {
     buffCount: 0,
     elapsed: 0,
     selected: "peashooter",
+    seedSlots: 8,
+    midgameSwaps: 0,
+    seedLoadout: ["peashooter","sunflower","wallnut","tallnut","chomper","cherrybomb","spikeweed","cactus"],
     shovel: false,
     plants: [],
     zombies: [],
@@ -381,6 +415,9 @@ function normalizeState(parsed) {
     pickedBuffNames: parsed.pickedBuffNames || (parsed.buffLog || []).map(b => b.name),
     perPlantBuffNames: { ...base.perPlantBuffNames, ...(parsed.perPlantBuffNames || {}) },
     mowerRecharge: parsed.mowerRecharge === 999999 ? null : parsed.mowerRecharge,
+    seedSlots: parsed.seedSlots || base.seedSlots,
+    midgameSwaps: parsed.midgameSwaps || 0,
+    seedLoadout: (parsed.seedLoadout || base.seedLoadout).filter(k => plantDefs[k]).slice(0, parsed.seedSlots || base.seedSlots),
   };
 }
 
@@ -1895,7 +1932,7 @@ function PvZRoguePrototype() {
   const lastTick = useRef(Date.now());
   stateRef.current = state;
 
-  const plantCards = useMemo(() => Object.keys(plantDefs), []);
+  const plantCards = useMemo(() => state.seedLoadout || Object.keys(plantDefs).slice(0, state.seedSlots || 8), [state.seedLoadout, state.seedSlots]);
   const scaling = Math.pow(1.2, state.buffCount).toFixed(2);
   const maxedPlants = maxBuffedPlants(state);
 
@@ -2393,6 +2430,25 @@ function PvZRoguePrototype() {
           <Card className="w-[106px] shrink-0 rounded-xl border-white/15 bg-white/10 text-white shadow-xl">
             <CardContent className="space-y-1 p-1">
               <div className="text-[10px] font-bold">Seeds</div>
+              <div className="text-[8px] text-lime-100/75">Loadout {(state.seedLoadout||[]).length}/{state.seedSlots} · Midgame swaps {state.midgameSwaps||0}</div>
+              <div className="grid grid-cols-2 gap-1 max-h-24 overflow-auto rounded border border-white/10 p-1">
+                {Object.keys(plantDefs).map(type => {
+                  const inLoadout = (state.seedLoadout || []).includes(type);
+                  const atCap = (state.seedLoadout || []).length >= state.seedSlots;
+                  const canSwap = !state.running || (state.midgameSwaps || 0) > 0;
+                  return <button key={`pick_${type}`} onClick={() => setState(prev => {
+                    const cur = prev.seedLoadout || [];
+                    const has = cur.includes(type);
+                    if (has) return { ...prev, seedLoadout: cur.filter(k => k !== type), selected: prev.selected === type ? (cur.find(k => k !== type) || "peashooter") : prev.selected };
+                    if (atCap && !canSwap) return prev;
+                    if (atCap) {
+                      const drop = cur[cur.length - 1];
+                      return { ...prev, seedLoadout: [...cur.slice(0, -1), type], selected: type, midgameSwaps: Math.max(0, (prev.midgameSwaps || 0) - 1), floaties: [...(prev.floaties||[]), { id: makeId("swap"), text: `Swapped ${plantDefs[drop].name} → ${plantDefs[type].name}`, x: 80, y: 24, life: 2 }] };
+                    }
+                    return { ...prev, seedLoadout: [...cur, type], selected: type };
+                  })} className={`rounded px-1 py-0.5 text-[8px] ${inLoadout?"bg-lime-300 text-green-950":"bg-black/25 text-lime-50"}`}>{plantDefs[type].name}</button>;
+                })}
+              </div>
               <div className="grid grid-cols-1 gap-1">
                 {plantCards.map(type => {
                   const def = plantDefs[type];
@@ -2472,6 +2528,7 @@ function PvZRoguePrototype() {
                 <div>Unlocked zombies: <b>{Object.values(zombieDefs).filter(z => z.unlock <= state.buffCount).length}/6</b></div>
                 <div>Mower recharge: <b>{state.mowerRecharge == null ? "off" : `${state.mowerRecharge}s`}</b></div>
                 <div>Max buffed: <b>{maxedPlants.length ? maxedPlants.map(p => plantDefs[p].name).join(", ") : "none"}</b></div>
+                <div>Loadout: <b>{(state.seedLoadout||[]).length}/{state.seedSlots}</b> · Swaps: <b>{state.midgameSwaps||0}</b></div>
               </div>
               <div className="flex items-center justify-between gap-1 pt-1"><div className="text-sm font-bold">All Buffs</div><Button onClick={copyBuffs} variant="secondary" className="h-6 rounded-md px-1.5 text-[9px]">Copy</Button></div>
               {copyNote && <div className={`text-[9px] ${copyNote === "Copied!" ? "text-yellow-200" : "text-red-200"}`}>{copyNote}</div>}
