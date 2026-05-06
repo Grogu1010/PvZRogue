@@ -339,8 +339,9 @@ function sampleWeightedUnique(items, count) {
 
 function baseState() {
   return {
-    running: true,
+    running: false,
     pausedForBuff: false,
+    pregameLoadout: true,
     draftMode: "normal",
     draftMinRarity: null,
     pendingDebuffDrafts: 0,
@@ -403,6 +404,7 @@ function normalizeState(parsed) {
     ...parsed,
     running: false,
     pausedForBuff: false,
+    pregameLoadout: parsed.pregameLoadout ?? false,
     draftMode: "normal",
     draftMinRarity: null,
     choices: [],
@@ -1933,6 +1935,8 @@ function PvZRoguePrototype() {
   const scaling = Math.pow(1.2, state.buffCount).toFixed(2);
   const maxedPlants = maxBuffedPlants(state);
 
+  const loadoutReady = (state.seedLoadout || []).length === state.seedSlots;
+
 
   useEffect(() => {
     function updateScale() {
@@ -1984,7 +1988,7 @@ function PvZRoguePrototype() {
   }
 
   function step(prev, dt) {
-    if (!prev.running || prev.pausedForBuff || prev.gameOver) return prev;
+    if (!prev.running || prev.pausedForBuff || prev.gameOver || prev.pregameLoadout) return prev;
 
     let s = { ...prev, elapsed: prev.elapsed + dt };
     let plants = prev.plants.map(p => ({ ...p }));
@@ -2319,7 +2323,7 @@ function PvZRoguePrototype() {
 
   function place(row, col) {
     setState(prev => {
-      if (prev.pausedForBuff || prev.gameOver) return prev;
+      if (prev.pausedForBuff || prev.gameOver || prev.pregameLoadout) return prev;
       const existing = prev.plants.find(p => p.row === row && p.col === col);
       if (prev.shovel) {
         if (!existing) return prev;
@@ -2418,7 +2422,7 @@ function PvZRoguePrototype() {
             <Badge>Rogue {fmt(state.roguePoints, 1)} / {state.nextBuffAt}</Badge>
             <Badge>Buffs {state.buffCount}</Badge>
             <Badge>Scale {scaling}x</Badge>
-            <Button onClick={() => setState(s => ({ ...s, running: !s.running }))} className="h-7 rounded-lg px-2 text-xs">{state.running ? "Pause" : "Resume"}</Button>
+            <Button onClick={() => setState(s => ({ ...s, running: s.pregameLoadout ? false : !s.running }))} className="h-7 rounded-lg px-2 text-xs">{state.running ? "Pause" : "Resume"}</Button>
             <Button onClick={restart} variant="secondary" className="h-7 rounded-lg px-2 text-xs">Restart</Button>
           </div>
         </div>
@@ -2468,6 +2472,22 @@ function PvZRoguePrototype() {
           </Card>
 
           <div className="relative shrink-0 overflow-hidden rounded-xl border border-white/15 bg-green-800 shadow-2xl" style={{ width: BOARD_W, height: BOARD_H }}>
+            {state.pregameLoadout && (
+              <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/65">
+                <div className="w-[380px] rounded-xl border border-lime-200/40 bg-emerald-950/95 p-4 text-center">
+                  <h2 className="text-xl font-black">Choose Your Loadout</h2>
+                  <p className="mt-1 text-sm text-lime-100/80">Pick exactly {state.seedSlots} plants, then press Play.</p>
+                  <p className="mt-1 text-xs text-lime-200">Selected: {(state.seedLoadout || []).length}/{state.seedSlots}</p>
+                  <Button
+                    onClick={() => setState(prev => loadoutReady ? ({ ...prev, pregameLoadout: false, running: true }) : prev)}
+                    className="mt-3 h-8 rounded-lg px-5 text-sm"
+                    disabled={!loadoutReady}
+                  >
+                    ▶ Play
+                  </Button>
+                </div>
+              </div>
+            )}
             <div className="absolute inset-0">
               {Array.from({ length: ROWS * COLS }).map((_, i) => {
                 const row = Math.floor(i / COLS);
