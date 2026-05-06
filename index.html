@@ -956,180 +956,82 @@ function PlantSprite({ type, action = "idle", small = false }) {
 
   if (type === "chomper") return (
     <SpriteFrame small={small} action={action === "chew" ? "chew" : "idle"}>
-      {/* Base leaves */}
-      <motion.g
-        animate={{ rotate: [-2, 2, -2] }}
-        transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-        style={{ transformOrigin: "32px 56px" }}
-      >
+      <LeafShadow />
+      <motion.g animate={{ rotate: [-2, 2, -2] }} transition={{ duration: 1.4, repeat: Infinity }} style={{ transformOrigin: "27px 53px" }}>
         <defs>
-          <radialGradient id="chompHeadGrad" cx="38%" cy="22%" r="78%">
-            <stop offset="0" stopColor="#e06aff" />
-            <stop offset="0.42" stopColor="#a020c8" />
-            <stop offset="0.78" stopColor="#6b0f9a" />
-            <stop offset="1" stopColor="#3d0760" />
-          </radialGradient>
-          <linearGradient id="chompStemGrad" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor="#7a28b8" />
-            <stop offset="1" stopColor="#3a0870" />
-          </linearGradient>
-          <radialGradient id="chompLeafGrad" cx="35%" cy="22%" r="75%">
-            <stop offset="0" stopColor="#aaff70" />
-            <stop offset="0.5" stopColor="#44cc38" />
-            <stop offset="1" stopColor="#146e22" />
-          </radialGradient>
-          <radialGradient id="chompInnerMouth" cx="50%" cy="30%" r="70%">
-            <stop offset="0" stopColor="#cc1a2e" />
-            <stop offset="1" stopColor="#5a0010" />
-          </radialGradient>
+          <linearGradient id="chompStemPvz" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#5ea52f" /><stop offset="1" stopColor="#2f701d" /></linearGradient>
+          <radialGradient id="chompHeadPvz" cx="35%" cy="30%" r="75%"><stop offset="0" stopColor="#b9d74e" /><stop offset="0.62" stopColor="#779d2d" /><stop offset="1" stopColor="#4f6f1d" /></radialGradient>
         </defs>
-
-        {/* Thick purple stem */}
-        <path
-          d="M32 58 C28 48 27 38 30 26"
-          fill="none"
-          stroke="url(#chompStemGrad)"
-          strokeWidth="9"
-          strokeLinecap="round"
-        />
-
-        {/* Left base leaf */}
-        <path
-          d="M26 55 C14 48 6 52 4 62 C14 65 24 62 30 57 Z"
-          fill="url(#chompLeafGrad)"
-          stroke="#0d6020"
-          strokeWidth="1.8"
-        />
-        {/* Right base leaf */}
-        <path
-          d="M36 54 C46 46 56 50 58 61 C47 65 37 62 32 56 Z"
-          fill="url(#chompLeafGrad)"
-          stroke="#0d6020"
-          strokeWidth="1.8"
-        />
-        {/* Small front leaf */}
-        <path
-          d="M29 52 C22 44 14 47 12 56 C20 58 28 56 31 51 Z"
-          fill="#3ab83a"
-          stroke="#0d6020"
-          strokeWidth="1.6"
-        />
-
-        {/* Main round head */}
-        <motion.g
-          animate={action === "chew" ? { scaleY: [1, 0.92, 1.05, 1] } : { scaleY: [1, 1.02, 1], y: [0, -1, 0] }}
-          transition={{ duration: action === "chew" ? 0.22 : 1.8, repeat: Infinity, ease: "easeInOut" }}
-          style={{ transformOrigin: "32px 24px" }}
-        >
-          {/* Head sphere */}
-          <ellipse cx="32" cy="24" rx="26" ry="24" fill="url(#chompHeadGrad)" stroke="#290550" strokeWidth="2.5" />
-          {/* Sheen highlight */}
-          <ellipse cx="22" cy="14" rx="9" ry="6" fill="#f0aaff" opacity="0.28" />
-
-          {/* Green horns on top */}
-          <path d="M22 4 C20 -4 26 -6 27 2 C26 5 24 6 22 4 Z" fill="#44cc38" stroke="#0d6020" strokeWidth="1.6" />
-          <path d="M38 2 C40 -6 46 -4 44 4 C42 6 40 5 38 2 Z" fill="#44cc38" stroke="#0d6020" strokeWidth="1.6" />
-          {/* Horn highlights */}
-          <path d="M23 1 C24 -2 26 -4 27 1" stroke="#aaff70" strokeWidth="1.2" fill="none" opacity="0.6" strokeLinecap="round" />
-          <path d="M40 0 C41 -3 43 -3 44 2" stroke="#aaff70" strokeWidth="1.2" fill="none" opacity="0.6" strokeLinecap="round" />
-
-          {/* Eyes — big cartoony on upper head */}
-          <ellipse cx="21" cy="16" rx="5.5" ry="6.5" fill="#f5f0d0" stroke="#1a0330" strokeWidth="1.8" />
-          <ellipse cx="42" cy="15" rx="5.5" ry="6.5" fill="#f5f0d0" stroke="#1a0330" strokeWidth="1.8" />
-          <circle cx="22" cy="17" r="2.8" fill="#0d0d1a" />
-          <circle cx="43" cy="16" r="2.8" fill="#0d0d1a" />
-          {/* Eye sheen */}
-          <circle cx="20" cy="14.5" r="1.2" fill="#fff" />
-          <circle cx="41" cy="13.5" r="1.2" fill="#fff" />
-
-          {/* The big mouth — lower half of head */}
-          {/* Upper lip arc */}
-          <motion.path
-            d={action === "chew"
-              ? "M8 26 C14 18 50 18 56 26"
-              : "M8 26 C14 22 50 22 56 26"}
-            fill="none"
-            stroke="#1a0330"
-            strokeWidth="3.5"
-            strokeLinecap="round"
-          />
-          {/* Mouth cavity */}
-          <motion.path
-            d={action === "chew"
-              ? "M8 26 C14 18 50 18 56 26 C52 44 16 44 8 26 Z"
-              : "M8 26 C14 22 50 22 56 26 C52 40 16 40 8 26 Z"}
-            fill="url(#chompInnerMouth)"
-            stroke="#1a0330"
-            strokeWidth="2"
-            animate={action === "chew"
-              ? { scaleY: [1, 1.18, 0.88, 1], scaleX: [1, 1.04, 0.98, 1] }
-              : { scaleY: [1, 1.04, 1] }}
-            transition={{ duration: action === "chew" ? 0.2 : 1.6, repeat: Infinity }}
-            style={{ transformOrigin: "32px 33px" }}
-          />
-          {/* Tongue */}
-          <motion.ellipse
-            cx="32" cy={action === "chew" ? 36 : 35}
-            rx="10" ry="4"
-            fill="#e0304a"
-            animate={action === "chew" ? { ry: [4, 5.5, 3.5, 4] } : { ry: [4, 4.5, 4] }}
-            transition={{ duration: action === "chew" ? 0.2 : 1.8, repeat: Infinity }}
-          />
-
-          {/* Top teeth row (on upper lip, pointing down) */}
-          <motion.g
-            animate={action === "chew" ? { y: [0, -3, 1, 0] } : { y: 0 }}
-            transition={{ duration: action === "chew" ? 0.2 : 1, repeat: Infinity }}
-          >
-            {[10, 17, 24, 31, 38, 45].map((x, i) => (
-              <path
-                key={`ut${i}`}
-                d={`M${x} 26 L${x + 3} 33 L${x + 6} 26`}
-                fill="#f8f4dc"
-                stroke="#3a2a10"
-                strokeWidth="1"
-              />
-            ))}
-          </motion.g>
-
-          {/* Bottom teeth row (pointing up) */}
-          <motion.g
-            animate={action === "chew" ? { y: [0, 3, -1, 0] } : { y: 0 }}
-            transition={{ duration: action === "chew" ? 0.2 : 1, repeat: Infinity }}
-          >
-            {[10, 17, 24, 31, 38, 45].map((x, i) => (
-              <path
-                key={`bt${i}`}
-                d={`M${x} 40 L${x + 3} 33 L${x + 6} 40`}
-                fill="#f8f4dc"
-                stroke="#3a2a10"
-                strokeWidth="1"
-              />
-            ))}
-          </motion.g>
-
-          {/* Outer lip ring over teeth for polish */}
-          <motion.path
-            d={action === "chew"
-              ? "M8 26 C14 18 50 18 56 26"
-              : "M8 26 C14 22 50 22 56 26"}
-            fill="none"
-            stroke="#7a1daa"
-            strokeWidth="4"
-            strokeLinecap="round"
-            opacity="0.7"
-          />
-          <motion.path
-            d={action === "chew"
-              ? "M8 26 C14 44 50 44 56 26"
-              : "M8 26 C14 40 50 40 56 26"}
-            fill="none"
-            stroke="#7a1daa"
-            strokeWidth="4"
-            strokeLinecap="round"
-            opacity="0.7"
-          />
+        <path d="M23 57 C22 49 23 40 27 31 C29 26 32 22 37 19" fill="none" stroke="url(#chompStemPvz)" strokeWidth="6.5" strokeLinecap="round" />
+        <path d="M8 59 C15 52 24 51 30 57 C21 62 13 63 8 59 Z" fill="#a56a2d" stroke="#6f3f16" strokeWidth="1.8" />
+        <path d="M22 61 C29 54 38 54 45 61 C35 64 27 64 22 61 Z" fill="#9b5e27" stroke="#6f3f16" strokeWidth="1.8" />
+        <motion.g animate={action === "chew" ? { rotate: [-3, 5, -3], x: [0, 1.4, 0] } : { y: [0, -0.7, 0] }} transition={{ duration: action === "chew" ? 0.26 : 1.5, repeat: Infinity }} style={{ transformOrigin: "39px 22px" }}>
+          <path d="M16 28 C16 13 30 6 45 9 C55 11 61 18 60 27 C58 37 49 43 36 44 C24 45 16 39 16 28 Z" fill="url(#chompHeadPvz)" stroke="#355413" strokeWidth="2.3" />
+          <path d="M25 14 C33 9 45 10 53 15" fill="none" stroke="#d4ea79" strokeWidth="2.4" opacity="0.6" strokeLinecap="round" />
+          <ellipse cx="43.5" cy="24" rx="7" ry="8" fill="#f7de71" stroke="#543912" strokeWidth="1.8" />
+          <ellipse cx="44.7" cy="24.5" rx="3.8" ry="4.6" fill="#b21e18" />
+          <circle cx="45.8" cy="24.3" r="1.2" fill="#ffd6a0" />
+          <path d={action === "chew" ? "M31 34 C37 28 50 29 56 34 C49 39 36 39 31 34 Z" : "M31 35 C37 31 50 31 56 35 C49 39 36 40 31 35 Z"} fill="#345516" stroke="#1e340e" strokeWidth="1.8" />
+          <path d="M29 25 C36 18 53 18 61 25 C56 26 49 27 43 26 C37 26 33 26 29 25 Z" fill="#7f9f2d" stroke="#355413" strokeWidth="2" />
+          <path d="M55 27 L63 29 L55 34 Z" fill="#446d1d" stroke="#1d300d" strokeWidth="1.4" />
+          <path d="M30 24 L26 30 L31 30 Z" fill="#f8efc6" stroke="#4e3918" strokeWidth="1" />
+          <path d="M36 23 L33 29 L38 29 Z" fill="#f8efc6" stroke="#4e3918" strokeWidth="1" />
+          <path d="M52 23 L49 29 L54 29 Z" fill="#f8efc6" stroke="#4e3918" strokeWidth="1" />
         </motion.g>
+      </motion.g>
+    </SpriteFrame>
+  );
+
+  if (type === "sunshroom") return (
+    <SpriteFrame {...common}>
+      <LeafShadow />
+      <motion.g animate={{ y: [0, -1, 0] }} transition={{ duration: 1.7, repeat: Infinity }}>
+        <ellipse cx="32" cy="41" rx="15" ry="17" fill="#f6f0d6" stroke="#a18857" strokeWidth="2" />
+        <path d="M13 30 C18 13 45 8 54 26 C56 32 53 38 49 41 C38 44 25 44 16 40 C13 37 12 34 13 30 Z" fill="#eeb447" stroke="#9d6223" strokeWidth="2.2" />
+        <ellipse cx="28" cy="23" rx="7" ry="5" fill="#ffd98a" opacity="0.45" />
+        <g fill="#d18a2f" opacity="0.75"><ellipse cx="25" cy="30" rx="4.5" ry="3.2" /><ellipse cx="38" cy="26" rx="4" ry="2.8" /><ellipse cx="44" cy="33" rx="3.7" ry="2.6" /></g>
+        <ellipse cx="27" cy="41" rx="2.3" ry="4.2" fill="#2c1d10" /><ellipse cx="37" cy="41" rx="2.3" ry="4.2" fill="#2c1d10" />
+      </motion.g>
+    </SpriteFrame>
+  );
+
+  if (type === "snapdragon") return (
+    <SpriteFrame {...common}>
+      <LeafShadow />
+      <motion.g animate={fast ? { x: [0, 2, 0] } : { rotate: [-2, 2, -2] }} transition={{ duration: fast ? 0.25 : 1.6, repeat: Infinity }} style={{ transformOrigin: "30px 38px" }}>
+        <path d="M29 56 C26 49 27 41 31 34" fill="none" stroke="#4c8d2a" strokeWidth="6" strokeLinecap="round" />
+        <path d="M14 58 C20 51 27 51 32 56 C24 61 18 61 14 58 Z" fill="#c06e2f" stroke="#7d4319" strokeWidth="1.6" />
+        <path d="M30 57 C36 50 43 50 49 56 C40 61 34 61 30 57 Z" fill="#b86426" stroke="#7d4319" strokeWidth="1.6" />
+        <path d="M16 30 C18 17 30 10 43 11 C54 12 61 19 60 28 C59 36 52 42 40 43 C28 44 18 39 16 30 Z" fill="#7f9829" stroke="#3e5616" strokeWidth="2.2" />
+        <path d="M24 16 C33 11 45 13 52 19" stroke="#b6ca51" strokeWidth="2.2" fill="none" opacity="0.65" />
+        <ellipse cx="43" cy="25" rx="6" ry="7" fill="#f2cb56" stroke="#5c3f17" strokeWidth="1.5" />
+        <ellipse cx="44" cy="25.8" rx="2.8" ry="3.5" fill="#b61f1e" />
+        <path d={fast ? "M29 34 C39 27 52 27 59 33 C52 39 38 40 29 34 Z" : "M29 35 C39 30 52 30 59 35 C52 40 38 41 29 35 Z"} fill="#334c16" stroke="#1d300d" strokeWidth="1.8" />
+      </motion.g>
+    </SpriteFrame>
+  );
+
+  if (type === "torchwood") return (
+    <SpriteFrame {...common}>
+      <LeafShadow />
+      <motion.g animate={{ y: [0, -0.8, 0] }} transition={{ duration: 1.5, repeat: Infinity }}>
+        <path d="M18 58 C14 42 17 22 32 18 C47 22 50 42 46 58 Z" fill="#8b5a2b" stroke="#4e2d13" strokeWidth="2.3" />
+        <path d="M23 31 C28 26 37 26 41 31" stroke="#4e2d13" strokeWidth="2.3" fill="none" />
+        <path d="M22 44 C28 39 37 39 43 44" stroke="#2f170a" strokeWidth="3" fill="none" />
+        <motion.path d="M20 20 C21 9 28 5 32 6 C36 5 43 9 44 20 C39 24 25 24 20 20 Z" fill="#ffe47c" stroke="#e29f24" strokeWidth="2.2" animate={{ scaleY: [1, 1.1, 0.95, 1] }} transition={{ duration: 0.32, repeat: Infinity }} style={{ transformOrigin: "32px 14px" }} />
+      </motion.g>
+    </SpriteFrame>
+  );
+
+  if (type === "iceberglettuce") return (
+    <SpriteFrame {...common}>
+      <LeafShadow />
+      <motion.g animate={{ y: [0, -1.2, 0], scale: [1, 1.03, 1] }} transition={{ duration: 1.9, repeat: Infinity }}>
+        <defs><radialGradient id="iceball" cx="35%" cy="25%" r="75%"><stop offset="0" stopColor="#e9ffff" /><stop offset="0.5" stopColor="#8ee7e6" /><stop offset="1" stopColor="#54b6c0" /></radialGradient></defs>
+        <path d="M14 38 C14 24 24 15 33 15 C44 15 53 24 52 37 C50 49 42 55 32 55 C22 55 16 48 14 38 Z" fill="url(#iceball)" stroke="#2f8e9b" strokeWidth="2" />
+        <path d="M17 31 L24 24 L30 25 L35 20 L44 23 L49 30" stroke="#c5ffff" strokeWidth="2" fill="none" opacity="0.7" />
+        <ellipse cx="27.5" cy="37" rx="3.4" ry="4.8" fill="#122331" />
+        <ellipse cx="38" cy="37" rx="3.4" ry="4.8" fill="#122331" />
       </motion.g>
     </SpriteFrame>
   );
