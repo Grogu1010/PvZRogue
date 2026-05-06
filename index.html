@@ -2334,24 +2334,26 @@ function PvZRoguePrototype() {
             <CardContent className="space-y-1 p-1">
               <div className="text-[10px] font-bold">Seeds</div>
               <div className="text-[8px] text-lime-100/75">Loadout {(state.seedLoadout||[]).length}/{state.seedSlots} · Midgame swaps {state.midgameSwaps||0}</div>
-              <div className="grid grid-cols-2 gap-1 max-h-24 overflow-auto rounded border border-white/10 p-1">
-                {Object.keys(plantDefs).map(type => {
-                  const inLoadout = (state.seedLoadout || []).includes(type);
-                  const atCap = (state.seedLoadout || []).length >= state.seedSlots;
-                  const canSwap = !state.running || (state.midgameSwaps || 0) > 0;
-                  return <button key={`pick_${type}`} onClick={() => setState(prev => {
-                    const cur = prev.seedLoadout || [];
-                    const has = cur.includes(type);
-                    if (has) return { ...prev, seedLoadout: cur.filter(k => k !== type), selected: prev.selected === type ? (cur.find(k => k !== type) || "peashooter") : prev.selected };
-                    if (atCap && !canSwap) return prev;
-                    if (atCap) {
-                      const drop = cur[cur.length - 1];
-                      return { ...prev, seedLoadout: [...cur.slice(0, -1), type], selected: type, midgameSwaps: Math.max(0, (prev.midgameSwaps || 0) - 1), floaties: [...(prev.floaties||[]), { id: makeId("swap"), text: `Swapped ${plantDefs[drop].name} → ${plantDefs[type].name}`, x: 80, y: 24, life: 2 }] };
-                    }
-                    return { ...prev, seedLoadout: [...cur, type], selected: type };
-                  })} className={`rounded px-1 py-0.5 text-[8px] ${inLoadout?"bg-lime-300 text-green-950":"bg-black/25 text-lime-50"}`}>{plantDefs[type].name}</button>;
-                })}
-              </div>
+              {!state.pregameLoadout && (
+                <div className="grid grid-cols-2 gap-1 max-h-24 overflow-auto rounded border border-white/10 p-1">
+                  {Object.keys(plantDefs).map(type => {
+                    const inLoadout = (state.seedLoadout || []).includes(type);
+                    const atCap = (state.seedLoadout || []).length >= state.seedSlots;
+                    const canSwap = !state.running || (state.midgameSwaps || 0) > 0;
+                    return <button key={`pick_${type}`} onClick={() => setState(prev => {
+                      const cur = prev.seedLoadout || [];
+                      const has = cur.includes(type);
+                      if (has) return { ...prev, seedLoadout: cur.filter(k => k !== type), selected: prev.selected === type ? (cur.find(k => k !== type) || "peashooter") : prev.selected };
+                      if (atCap && !canSwap) return prev;
+                      if (atCap) {
+                        const drop = cur[cur.length - 1];
+                        return { ...prev, seedLoadout: [...cur.slice(0, -1), type], selected: type, midgameSwaps: Math.max(0, (prev.midgameSwaps || 0) - 1), floaties: [...(prev.floaties||[]), { id: makeId("swap"), text: `Swapped ${plantDefs[drop].name} → ${plantDefs[type].name}`, x: 80, y: 24, life: 2 }] };
+                      }
+                      return { ...prev, seedLoadout: [...cur, type], selected: type };
+                    })} className={`rounded px-1 py-0.5 text-[8px] ${inLoadout?"bg-lime-300 text-green-950":"bg-black/25 text-lime-50"}`}>{plantDefs[type].name}</button>;
+                  })}
+                </div>
+              )}
               <div className="grid grid-cols-1 gap-1">
                 {plantCards.map(type => {
                   const def = plantDefs[type];
@@ -2376,10 +2378,35 @@ function PvZRoguePrototype() {
           <div className="relative shrink-0 overflow-hidden rounded-xl border border-white/15 bg-green-800 shadow-2xl" style={{ width: BOARD_W, height: BOARD_H }}>
             {state.pregameLoadout && (
               <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/65">
-                <div className="w-[380px] rounded-xl border border-lime-200/40 bg-emerald-950/95 p-4 text-center">
+                <div className="w-[720px] max-w-[92%] rounded-xl border border-lime-200/40 bg-emerald-950/95 p-5 text-center">
                   <h2 className="text-xl font-black">Choose Your Loadout</h2>
-                  <p className="mt-1 text-sm text-lime-100/80">Pick exactly {state.seedSlots} plants, then press Play.</p>
+                  <p className="mt-1 text-sm text-lime-100/80">Pick exactly {state.seedSlots} plants from this full-screen menu, then press Play.</p>
                   <p className="mt-1 text-xs text-lime-200">Selected: {(state.seedLoadout || []).length}/{state.seedSlots}</p>
+                  <div className="mt-3 grid max-h-[300px] grid-cols-2 gap-2 overflow-auto rounded-lg border border-lime-200/25 bg-black/20 p-2 text-left sm:grid-cols-3">
+                    {Object.keys(plantDefs).map(type => {
+                      const inLoadout = (state.seedLoadout || []).includes(type);
+                      const atCap = (state.seedLoadout || []).length >= state.seedSlots;
+                      return (
+                        <button
+                          key={`pregame_pick_${type}`}
+                          onClick={() => setState(prev => {
+                            const cur = prev.seedLoadout || [];
+                            const has = cur.includes(type);
+                            if (has) return { ...prev, seedLoadout: cur.filter(k => k !== type), selected: prev.selected === type ? (cur.find(k => k !== type) || "peashooter") : prev.selected };
+                            if (atCap) return prev;
+                            return { ...prev, seedLoadout: [...cur, type], selected: type };
+                          })}
+                          className={`flex items-center gap-2 rounded-lg border p-2 transition ${inLoadout ? "border-lime-100 bg-lime-300 text-green-950" : "border-white/15 bg-emerald-900/65 text-lime-50 hover:bg-emerald-800/80"}`}
+                        >
+                          <div className="text-2xl leading-none"><PlantSprite type={type} /></div>
+                          <div>
+                            <div className="text-sm font-bold leading-tight">{plantDefs[type].name}</div>
+                            <div className="text-xs leading-tight">Cost {cardCost(type, state)}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                   <Button
                     onClick={() => setState(prev => loadoutReady ? ({ ...prev, pregameLoadout: false, running: true }) : prev)}
                     className="mt-3 h-8 rounded-lg px-5 text-sm"
