@@ -2,12 +2,13 @@
 <html>
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>PvZ Rogue</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js" crossorigin="anonymous"></script>
+<script src="./runtime-patch.js"></script>
 <style>
-html,body{margin:0;min-height:100%;background:#052e16}#boot-status{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;background:#052e16;color:#ecfccb;font:600 16px/1.5 system-ui,sans-serif;text-align:center}#boot-status.error{background:#1f0a0a;color:#fecaca;white-space:pre-wrap}
+html,body,#root{margin:0;width:100%;min-height:100%;background:#052e16}body{overflow:hidden}#boot-status{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;background:#052e16;color:#ecfccb;font:600 16px/1.5 system-ui,sans-serif;text-align:center}#boot-status.error{background:#1f0a0a;color:#fecaca;white-space:pre-wrap}body.low-spec svg{filter:none!important}body.low-spec [class*="backdrop-blur"]{backdrop-filter:none!important}body.low-spec [class*="blur-"]{filter:none!important}
 </style>
 </head>
 <body>
@@ -17,19 +18,24 @@ html,body{margin:0;min-height:100%;background:#052e16}#boot-status{position:fixe
 (()=>{
  const status=document.getElementById('boot-status');
  const root=()=>document.getElementById('root');
+ const lowSpec=((navigator.hardwareConcurrency||8)<=4)||((navigator.deviceMemory||8)<=4)||matchMedia('(prefers-reduced-motion: reduce)').matches;
+ window.__PVZ_LOW_SPEC__=lowSpec;
+ if(lowSpec) document.body.classList.add('low-spec');
  const showError=(error)=>{const message=error&&(error.stack||error.message)?(error.stack||error.message):String(error||'Unknown startup error');status.classList.add('error');status.textContent='PvZ Rogue could not start.\n\n'+message+'\n\nTry a hard refresh. If this remains, send this message with the report.';console.error('PvZ Rogue startup failure:',error)};
  window.addEventListener('error',e=>{if(!root()?.childElementCount)showError(e.error||e.message)});
  window.addEventListener('unhandledrejection',e=>{if(!root()?.childElementCount)showError(e.reason)});
  (async()=>{try{
    if(!window.Babel)throw new Error('Pinned Babel compiler failed to load.');
+   if(!window.__patchPvZRogueSource)throw new Error('Runtime game patch failed to load.');
    const response=await fetch('./app-source.html',{cache:'no-store'});
    if(!response.ok)throw new Error(`Could not load game source (HTTP ${response.status}).`);
    const html=await response.text();
    const doc=new DOMParser().parseFromString(html,'text/html');
    const tag=doc.querySelector('script[type="text/babel"]');
    if(!tag)throw new Error('Game source is missing its JSX module script.');
-   status.textContent='Compiling PvZ Rogue…';
-   const compiled=Babel.transform(tag.textContent,{presets:['react'],sourceType:'module',filename:'app-source.jsx'}).code;
+   status.textContent=lowSpec?'Optimizing PvZ Rogue for this device…':'Compiling PvZ Rogue…';
+   const patchedSource=window.__patchPvZRogueSource(tag.textContent);
+   const compiled=Babel.transform(patchedSource,{presets:['react'],sourceType:'module',filename:'app-source.jsx'}).code;
    const script=document.createElement('script');script.type='module';script.textContent=compiled+'\n//# sourceURL=pvz-rogue.compiled.js';
    script.addEventListener('error',()=>{if(!root()?.childElementCount)showError(new Error('Compiled game module failed to load. Check network access to esm.sh.'))});
    document.body.appendChild(script);
