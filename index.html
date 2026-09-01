@@ -10,6 +10,7 @@
 <script src="./immersive-ui-patch.js"></script>
 <script src="./portal-ui-patch.js?v=0b9fcbd"></script>
 <script src="./gameplay-polish-patch.js?v=d8a9ab0"></script>
+<script src="./vader-vine-art-patch.js?v=1907bf5"></script>
 <style>
 html,body,#root{margin:0;width:100%;min-height:100%;background:#052e16}body{overflow:hidden}#boot-status{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;background:#052e16;color:#ecfccb;font:600 16px/1.5 system-ui,sans-serif;text-align:center}#boot-status.error{background:#1f0a0a;color:#fecaca;white-space:pre-wrap}body.low-spec svg{filter:none!important}body.low-spec [class*="backdrop-blur"]{backdrop-filter:none!important}body.low-spec [class*="blur-"]{filter:none!important}
 </style>
@@ -33,6 +34,7 @@ html,body,#root{margin:0;width:100%;min-height:100%;background:#052e16}body{over
    if(!window.__patchPvZRogueImmersive)throw new Error('Immersive UI patch failed to load.');
    if(!window.__patchPvZRoguePortal)throw new Error('Fullscreen loadout patch failed to load.');
    if(!window.__patchPvZRogueGameplay)throw new Error('Gameplay polish patch failed to load.');
+   if(!window.__patchVaderVineArt)throw new Error('Vader Vine art patch failed to load.');
    const response=await fetch('./app-source.html',{cache:'no-store'});
    if(!response.ok)throw new Error(`Could not load game source (HTTP ${response.status}).`);
    const html=await response.text();
@@ -43,7 +45,8 @@ html,body,#root{margin:0;width:100%;min-height:100%;background:#052e16}body{over
    const runtimePatchedSource=window.__patchPvZRogueSource(tag.textContent);
    const immersivePatchedSource=window.__patchPvZRogueImmersive(runtimePatchedSource);
    const portalPatchedSource=window.__patchPvZRoguePortal(immersivePatchedSource);
-   const patchedSource=window.__patchPvZRogueGameplay(portalPatchedSource);
+   const gameplayPatchedSource=window.__patchPvZRogueGameplay(portalPatchedSource);
+   const patchedSource=window.__patchVaderVineArt(gameplayPatchedSource);
    const compiled=Babel.transform(patchedSource,{presets:['react'],sourceType:'module',filename:'app-source.jsx'}).code;
    const script=document.createElement('script');script.type='module';script.textContent=compiled+'\n//# sourceURL=pvz-rogue.compiled.js';
    script.addEventListener('error',()=>{if(!root()?.childElementCount)showError(new Error('Compiled game module failed to load. Check network access to esm.sh.'))});
