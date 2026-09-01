@@ -15,6 +15,7 @@
 <script src="./air-loadout-patch.js?v=bd59c6f"></script>
 <script src="./pineapple-visco-patch.js?v=e0d9d6c"></script>
 <script src="./pineapple-visco-cleanup-patch.js?v=f385db1"></script>
+<script src="./pineapple-range-charge-patch.js?v=4612665"></script>
 <style>
 html,body,#root{margin:0;width:100%;min-height:100%;background:#052e16}body{overflow:hidden}#boot-status{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;background:#052e16;color:#ecfccb;font:600 16px/1.5 system-ui,sans-serif;text-align:center;white-space:pre-line}#boot-status.error{background:#1f0a0a;color:#fecaca;white-space:pre-wrap}
 body.low-spec svg{filter:none!important}body.low-spec [class*="backdrop-blur"]{backdrop-filter:none!important}body.low-spec [class*="blur-"]{filter:none!important}
@@ -65,6 +66,7 @@ body.tier-ultra [class*="shadow"]{box-shadow:none!important}body.tier-ultra svg{
    if(!window.__patchPvZRogueAirLoadout)throw new Error('Air/loadout patch failed to load.');
    if(!window.__patchPvZRoguePineappleVisco)throw new Error('Pineapple/Visco patch failed to load.');
    if(!window.__patchPvZRoguePineappleViscoCleanup)throw new Error('Pineapple/Visco cleanup patch failed to load.');
+   if(!window.__patchPvZRoguePineappleRangeCharge)throw new Error('Pineapple range-charge patch failed to load.');
    const response=await fetch('./app-source.html',{cache:'no-store'});
    if(!response.ok)throw new Error(`Could not load game source (HTTP ${response.status}).`);
    const html=await response.text();
@@ -80,7 +82,8 @@ body.tier-ultra [class*="shadow"]{box-shadow:none!important}body.tier-ultra svg{
    const buffPatchedSource=window.__patchPvZRogueBuffsPerformance(vaderPatchedSource);
    const airPatchedSource=window.__patchPvZRogueAirLoadout(buffPatchedSource);
    const pineapplePatchedSource=window.__patchPvZRoguePineappleVisco(airPatchedSource);
-   const patchedSource=window.__patchPvZRoguePineappleViscoCleanup(pineapplePatchedSource);
+   const pineappleCleanupSource=window.__patchPvZRoguePineappleViscoCleanup(pineapplePatchedSource);
+   const patchedSource=window.__patchPvZRoguePineappleRangeCharge(pineappleCleanupSource);
    const compiled=Babel.transform(patchedSource,{presets:['react'],sourceType:'module',filename:'app-source.jsx'}).code;
    const script=document.createElement('script');script.type='module';script.textContent=compiled+'\n//# sourceURL=pvz-rogue.compiled.js';
    script.addEventListener('error',()=>{if(!root()?.childElementCount)showError(new Error('Compiled game module failed to load. Check network access to esm.sh.'))});
