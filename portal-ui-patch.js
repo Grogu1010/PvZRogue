@@ -6,8 +6,8 @@ window.__patchPvZRoguePortal = function patchPvZRoguePortal(source) {
 
   replaceRequired(
     'import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";',
-    'import { createRoot, createPortal } from "https://esm.sh/react-dom@18.3.1/client";',
-    'React DOM import'
+    'import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";\nimport { createPortal } from "https://esm.sh/react-dom@18.3.1";',
+    'React DOM imports'
   );
 
   replaceRequired(
