@@ -40,7 +40,7 @@ window.__patchPvZRogueAirLoadout = function patchPvZRogueAirLoadout(source) {
 
   replaceRequired(
     '              source: next.type, slow: stats.mods.slowOnHit || 0, splash: stats.mods.splash || 0,',
-    '              source: next.type, hitsAir: !!stats.hitsAir, slow: stats.mods.slowOnHit || 0, splash: stats.mods.splash || 0,',
+    '              hitsAir: !!stats.hitsAir, source: next.type, slow: stats.mods.slowOnHit || 0, splash: stats.mods.splash || 0,',
     'projectile anti-air flag'
   );
 
