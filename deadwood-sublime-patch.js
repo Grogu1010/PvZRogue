@@ -8,12 +8,11 @@ window.__patchPvZRogueDeadwoodSublime = function patchPvZRogueDeadwoodSublime(so
   // builds that UI from Object.keys(plantDefs).
   req(
     '  poppingcornkernel: { name: "Popping Corn Kernel", icon: "🌽", cost: 125, hp: 300, kind: "airtrap", damage: 3000, fireRate: 1.0, airOnly: true },\n};',
-    '  poppingcornkernel: { name: "Popping Corn Kernel", icon: "🌽", cost: 125, hp: 300, kind: "airtrap", damage: 3000, fireRate: 1.0, airOnly: true },\n  deadwood: { name: "Deadwood", icon: "🪵", cost: 200, hp: 760, kind: "deadwood" },\n  sublime: { name: "Sublime", icon: "🍋", cost: 225, hp: 340, kind: "sublime", damage: 15, fireRate: 0.25 },\n};',
+    '  poppingcornkernel: { name: "Popping Corn Kernel", icon: "🌽", cost: 125, hp: 300, kind: "airtrap", damage: 3000, fireRate: 1.0, airOnly: true },\n  deadwood: { name: "Deadwood", icon: "🪵", cost: 200, hp: 760, kind: "deadwood" },\n  sublime: { name: "Sublime", icon: "🍋", cost: 225, hp: 340, kind: "sublime", damage: 15, fireRate: 0.25, hitsAir: true, acidImmune: true },\n};',
     'new plant definitions'
   );
 
-  // Full buff pools. Sublime can become decent with investment, but its base card
-  // remains intentionally ordinary for the price.
+  // Full buff pools for the two new plants.
   const globalAnchor = 'const globalBuffs = [';
   req(globalAnchor, `plantBuffs.deadwood = [
   ["Dense Dead Bark", "+180 HP", p => ({ ...p, hpFlat:(p.hpFlat||0)+180 })],
@@ -52,8 +51,7 @@ ${globalAnchor}`,
     'additive plant damage support'
   );
 
-  // Mythics. Sublime intentionally gets the exact ridiculous boardwide triple-lime
-  // payoff requested; Deadwood's Mythic turns one living tree into a lawnwide fog source.
+  // Mythics.
   const mythicAnchor = 'function zombieIntelStats(type, state) {';
   req(mythicAnchor, `Object.assign(MYTHIC_MODS, {
   deadwood:{name:"Purgatory Fog",desc:"While any Mythic Deadwood lives, every Pea and Fire Pea on the lawn becomes a Dead Pea without needing to cross the tree. Ghosts can stack to 5 and do not expire while their host lives.",mod:p=>({...p,mythicPurgatoryFog:true,ghostCap:5})},
@@ -103,9 +101,8 @@ function SublimeSprite({ action="idle", small=false }) {
 `;
   source = source.replace(spriteMatch[0], art + '\n' + spriteMatch[0] + '\n  if (type === "deadwood") return <DeadwoodSprite action={action} small={small} />;\n  if (type === "sublime") return <SublimeSprite action={action} small={small} />;');
 
-  // Sublime combat: one attack every 4 seconds by default. A lime starts with the
-  // nearest grounded zombie in its row, then ricochets only farther into the wave,
-  // moving at most one lane per hop (two with its buff). Each zombie is hit once.
+  // Sublime combat: one attack every 4 seconds by default. Limes can hit flying
+  // targets and ricochet farther into the wave while changing lanes between bounces.
   const shooterAnchor = '      if ((stats.kind === "shooter" || stats.kind === "lobber") && next.cd <= 0) {';
   req(shooterAnchor, `      if(next.type==="sublime"&&next.cd<=0){
         const limeRate=stats.mods.sublimeFireRate||stats.fireRate||.25;
@@ -116,7 +113,7 @@ function SublimeSprite({ action="idle", small=false }) {
           if(DEVICE_TIER!=="ultra")floaties.push({id:makeId("limeStorm"),text:"🍋🍋🍋 LIME STORM",x:BOARD_W/2-58,y:20,life:.85});
           return next;
         }
-        const first=live.filter(z=>!z.flying&&z.row===next.row&&z.x>next.col*CELL_W+35).sort((a,b)=>a.x-b.x)[0];
+        const first=live.filter(z=>z.row===next.row&&z.x>next.col*CELL_W+35).sort((a,b)=>a.x-b.x)[0];
         if(first){
           const runChain=()=>{
             let cur=first,hit=new Set();
@@ -124,7 +121,7 @@ function SublimeSprite({ action="idle", small=false }) {
             while(cur&&!hit.has(cur.id)){
               cur.hp-=stats.damage;hit.add(cur.id);
               const cx=cur.x,cr=cur.row;
-              cur=live.filter(z=>!z.flying&&z.hp>0&&!hit.has(z.id)&&z.x>cx&&Math.abs(z.row-cr)<=laneJump).sort((a,b)=>(a.x-cx)-(b.x-cx)||Math.abs(a.row-cr)-Math.abs(b.row-cr))[0];
+              cur=live.filter(z=>z.hp>0&&!hit.has(z.id)&&z.x>cx&&Math.abs(z.row-cr)<=laneJump).sort((a,b)=>(a.x-cx)-(b.x-cx)||Math.abs(a.row-cr)-Math.abs(b.row-cr))[0];
             }
           };
           runChain();if(stats.mods.limeDouble&&Math.random()<stats.mods.limeDouble)runChain();
@@ -212,6 +209,36 @@ ${zombieMapAnchor}`,
         if(DEVICE_TIER!=="ultra")floaties.push({id:makeId("acidSplash"),text:"🟢 ACID",x:p.col*CELL_W+12,y:p.row*CELL_H+12,life:.8});
       }`,
     'Sublime death hook'
+  );
+
+  // Mr. Cool-Brainz stands in lane 4. His body can be hit from lanes 2-4, but he
+  // only physically attacks lane 4. His freezing only targets lanes 2 and 3.
+  source = source.replace('zombies.push(createZombie(s, "coolbrainz", 2, BOARD_W + 38));','zombies.push(createZombie(s, "coolbrainz", 3, BOARD_W + 38));');
+  source = source.replace('return !p.frozenHp && (p.row === next.row || (next.type === "coolbrainz" && Math.abs(p.row-next.row)<=1)) && p.hp > 0 && stats.kind !== "spike" && next.x > p.col * CELL_W + 18 && next.x < p.col * CELL_W + 56 && (!next.flying || stats.blocksAir);','return !p.frozenHp && p.row === next.row && p.hp > 0 && stats.kind !== "spike" && next.x > p.col * CELL_W + 18 && next.x < p.col * CELL_W + 56 && (!next.flying || stats.blocksAir);');
+  source = source.replace('(z.row === pr.row || (z.type === "coolbrainz" && Math.abs(pr.row-z.row)<=1)) && z.x >= minX','(z.row === pr.row || (z.type === "coolbrainz" && pr.row <= z.row && pr.row >= z.row-2)) && z.x >= minX');
+  source = source.replace('const lane = [1,2,3][Math.floor(Math.random()*3)];','const lane = [1,2][Math.floor(Math.random()*2)];');
+  source = source.replace('const candidates = plants.filter(p=>p.hp>0 && !p.frozenHp && !fireImmune(p));','const candidates = plants.filter(p=>p.hp>0 && (p.row===1||p.row===2) && !p.frozenHp && !fireImmune(p));');
+
+  // Counter Intel for the new plants.
+  source = source.replace(
+    '  imp: { does: "Very fast, fragile pressure zombie. Gargantuars can throw more of them.", weak: ["Spikeweed", "Snapdragon", "Cabbage Pult"], strong: ["Slow shooters", "Empty lanes", "Backline sun plants"] },',
+    '  imp: { does: "Very fast, fragile pressure zombie. Gargantuars can throw more of them.", weak: ["Spikeweed", "Snapdragon", "Cabbage Pult", "Sublime"], strong: ["Slow shooters", "Empty lanes", "Backline sun plants"] },'
+  );
+  source = source.replace(
+    '  buckethead: { does: "Heavy armor makes it the toughest ordinary zombie before specialist enemies.", weak: ["Chomper", "Pineapple Puncher", "Laser Bean"], strong: ["Peashooter", "Spikeweed", "Sunflower"] },',
+    '  buckethead: { does: "Heavy armor makes it the toughest ordinary zombie before specialist enemies.", weak: ["Chomper", "Pineapple Puncher", "Laser Bean", "Deadwood"], strong: ["Peashooter", "Spikeweed", "Sunflower", "Sublime"] },'
+  );
+  source = source.replace(
+    '  gargantuar: { does: "Massive tank that hits extremely hard and throws Imps.", weak: ["Pineapple Puncher", "Chomper", "Stacked ranged fire"], strong: ["Wall Nut", "Tall Nut", "Single-target chip"] },',
+    '  gargantuar: { does: "Massive tank that hits extremely hard and throws Imps.", weak: ["Pineapple Puncher", "Chomper", "Stacked ranged fire", "Deadwood"], strong: ["Wall Nut", "Tall Nut", "Single-target chip", "Sublime"] },'
+  );
+  source = source.replace(
+    '  viscoelastic: { does: "One consistent reflection rule: reflectable plant attacks deal 35% impact damage to Visco and reflect 35% back to the attacking plant. Explosions deal 0. Fire bonus/burn deals 0; Fire Peas first fall back to base pea impact, then use the same 35/35 rule.", weak: ["Sustained low-impact attacks", "Debuffs", "Disposable attackers"], strong: ["Huge single hits", "Fire bonus / burns", "Explosions"] },',
+    '  viscoelastic: { does: "Reflectable plant attacks deal 35% impact damage to Visco and reflect 35% back. Explosions deal 0 and fire bonus/burn deals 0. Dead Pea Ghosts, Sublime limes and acid are not reflective energy attacks.", weak: ["Deadwood / Dead Peas", "Sustained low-impact attacks", "Debuffs"], strong: ["Huge single hits", "Fire bonus / burns", "Explosions"] },'
+  );
+  source = source.replace(
+    '  coolbrainz: { does: "COUNT 25 BOSS. Three lanes tall, immune to knockback, and exempt from normal zombie scaling. After 10 seconds he freeze-rays one occupied lane, then freezes one random plant every 5 seconds. Frozen plants cannot act and zombies walk through them. Killing him shatters every ice block. Fire attacks deal 1.7x damage to him.", weak: ["Fire Peashooter (1.7x)", "Snapdragon (1.7x)", "Torchwood-supported fire"], strong: ["Knockback", "Frozen plants", "Slow setups"] },',
+    '  coolbrainz: { does: "COUNT 25 BOSS. His body spans lanes 2-4 and can be attacked from all three, but he stands in and bites only lane 4. He never freezes lane 4: his freeze ray and follow-up freezes only target lanes 2 or 3. He is immune to knockback, exempt from normal zombie scaling, and fire attacks deal 1.7x damage.", weak: ["Deadwood", "Fire Peashooter (1.7x)", "Snapdragon (1.7x)", "Torchwood-supported fire"], strong: ["Knockback", "Frozen plants", "Slow setups"] },'
   );
 
   return source;
