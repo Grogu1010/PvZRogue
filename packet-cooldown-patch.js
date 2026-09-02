@@ -10,7 +10,7 @@ window.__patchPvZRoguePacketCooldowns = function patchPvZRoguePacketCooldowns(so
   wallnut: 15,
   tallnut: 20,
   cherrybomb: 15,
-  iceberglettuce: 15,
+  iceberglettuce: 35,
   pineapplepuncher: 20,
   chomper: 20,
 };
