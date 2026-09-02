@@ -1,4 +1,10 @@
 window.__patchPvZRogueViscoFirePeas = function patchPvZRogueViscoFirePeas(source) {
+  // Viscoelastic Zombie health nerf: 1250 -> 950 base HP (-24%).
+  source = source.replace(
+    '  viscoelastic: { name: "Viscoelastic Zombie", icon: "🫧", points: 10, hp: 1250, speed: 6.2, damage: 72, unlock: 7, flying: false, heavy: true, fireproof: true, explosionProof: true },',
+    '  viscoelastic: { name: "Viscoelastic Zombie", icon: "🫧", points: 10, hp: 950, speed: 6.2, damage: 72, unlock: 7, flying: false, heavy: true, fireproof: true, explosionProof: true },'
+  );
+
   // Remember the pea's pre-ignition impact damage so Visco can ignore only the fire bonus.
   const projectileFields = '              hitsAir: !!stats.hitsAir, source: next.type, fire: !!stats.firePlant, slow: stats.mods.slowOnHit || 0, splash: stats.mods.splash || 0,';
   const projectileFieldsWithBase = '              hitsAir: !!stats.hitsAir, source: next.type, fire: !!stats.firePlant, baseImpactDamage: stats.damage, slow: stats.mods.slowOnHit || 0, splash: stats.mods.splash || 0,';
