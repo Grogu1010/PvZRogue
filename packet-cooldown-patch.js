@@ -17,6 +17,8 @@ window.__patchPvZRoguePacketCooldowns = function patchPvZRoguePacketCooldowns(so
 
 function packetCooldownFor(type, state) {
   if ((state.plantMods?.[type] || {}).noPacketCooldown) return 0;
+  const mods = state.plantMods?.[type] || {};
+  if (type === "pineapplepuncher" && mods.bogof && (((state.pineapplePlaced || 0) + 1) % 2 === 0)) return 0;
   return (PLANT_PACKET_COOLDOWNS[type] ?? 4) * (state.cooldownMult || 1);
 }
 
