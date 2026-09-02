@@ -51,35 +51,20 @@ function cardCost(type, state) {`);
     'cherrybomb: { name:"Cherry Nuclear Option", desc:"Cherry Bomb gets 5x damage, +3 radius, near-instant fuse, costs 0 and has NO packet cooldown.", mod:p=>({...p,damageMult:(p.damageMult||1)*5,radiusFlat:(p.radiusFlat||0)+3,fuseMult:(p.fuseMult||1)*0.15,costFlat:(p.costFlat||0)-999,noPacketCooldown:true}) },'
   );
 
-  req(
-`                {plantCards.map(type => {
-                  const def = plantDefs[type];
-                  const cost = cardCost(type, state);
-                  const selected = state.selected === type && !state.shovel;
-                  return (
-                    <button key={type} onClick={() => setState(s => ({ ...s, selected: type, shovel: false }))} className={\`flex items-center gap-1 rounded-md border px-1 py-0.5 text-left transition \${selected ? "border-lime-100 bg-lime-300 text-green-950" : "border-white/10 bg-black/25 hover:bg-white/15"}\`}>
-                      <div className="w-5 shrink-0 leading-none"><PlantSprite type={type} small /></div>
-                      <div className="min-w-0">
-                        <div className="max-w-[72px] truncate text-[8px] font-bold leading-tight">{def.name}</div>
-                        <div className="text-[8px] leading-tight">{cost}</div>
-                      </div>
-                    </button>`,
-`                {plantCards.map(type => {
-                  const def = plantDefs[type];
-                  const cost = cardCost(type, state);
-                  const cooldownLeft = state.packetCooldowns?.[type] || 0;
-                  const selected = state.selected === type && !state.shovel;
-                  return (
-                    <button key={type} onClick={() => setState(s => ({ ...s, selected: type, shovel: false }))} className={\`relative flex items-center gap-1 overflow-hidden rounded-md border px-1 py-0.5 text-left transition \${selected ? "border-lime-100 bg-lime-300 text-green-950" : "border-white/10 bg-black/25 hover:bg-white/15"} \${cooldownLeft > 0 ? "opacity-60" : ""}\`}>
-                      <div className="w-5 shrink-0 leading-none"><PlantSprite type={type} small /></div>
-                      <div className="min-w-0">
-                        <div className="max-w-[72px] truncate text-[8px] font-bold leading-tight">{def.name}</div>
-                        <div className="text-[8px] leading-tight">{cooldownLeft > 0 ? cooldownLeft.toFixed(1) + "s" : cost}</div>
-                      </div>
-                      {cooldownLeft > 0 && <div className="absolute inset-x-0 bottom-0 h-0.5 bg-sky-300" style={{width: String(Math.min(100,(cooldownLeft/Math.max(.01,packetCooldownFor(type,state)))*100)) + "%"}} />}
-                    </button>`,
-    'seed packet cooldown UI'
-  );
+  // Cooldown gameplay is mandatory; card decoration is deliberately optional.
+  // The seed-bank markup is changed by the immersive UI patch, so startup must
+  // never fail just because a cosmetic cooldown label cannot be injected.
+  const cardVars = '                  const cost = cardCost(type, state);\n                  const selected = state.selected === type && !state.shovel;';
+  if (source.includes(cardVars)) {
+    source = source.replace(
+      cardVars,
+      '                  const cost = cardCost(type, state);\n                  const cooldownLeft = state.packetCooldowns?.[type] || 0;\n                  const selected = state.selected === type && !state.shovel;'
+    );
+    const costLine = '<div className="text-[8px] leading-tight">{cost}</div>';
+    if (source.includes(costLine)) {
+      source = source.replace(costLine, '<div className="text-[8px] leading-tight">{cooldownLeft > 0 ? cooldownLeft.toFixed(1) + "s" : cost}</div>');
+    }
+  }
 
   return source;
 };
