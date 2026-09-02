@@ -25,6 +25,22 @@ window.__patchPvZRogueZombieIntelUI = function patchPvZRogueZombieIntelUI(source
     'if (Math.abs(z.row - burn.row) <= burn.radius && Math.abs(zCol - burn.col) <= burn.radius && !(burn.acid && z.type === "viscoelastic")) z.hp -= burn.damage;'
   );
 
+  // Make pea state readable at a glance: normal, fire, dead, and dead-fire all look distinct.
+  const oldProjectileRender = '{state.projectiles.map(pr => <div key={pr.id} className="pointer-events-none select-none absolute z-40 text-lg" style={{ left: pr.x, top: pr.y }}>{pr.source === "cabbagepult" ? "🥬" : pr.source === "cactus" ? "•" : pr.source === "sunflower" ? "☀️" : "🟢"}</div>)}';
+  const newProjectileRender = `{state.projectiles.map(pr => {
+    const dead=!!pr.deadPea, fire=!!pr.fire||pr.source==="firepeashooter", deadFire=dead&&(!!pr.deadFirePea||fire);
+    if(pr.source==="cabbagepult")return <div key={pr.id} className="pointer-events-none select-none absolute z-40 text-lg" style={{left:pr.x,top:pr.y}}>🥬</div>;
+    if(pr.source==="cactus")return <div key={pr.id} className="pointer-events-none select-none absolute z-40 text-lg" style={{left:pr.x,top:pr.y}}>•</div>;
+    if(pr.source==="sunflower")return <div key={pr.id} className="pointer-events-none select-none absolute z-40 text-lg" style={{left:pr.x,top:pr.y}}>☀️</div>;
+    return <div key={pr.id} className="pointer-events-none select-none absolute z-40" style={{left:pr.x,top:pr.y}} title={deadFire?"Dead Fire Pea":dead?"Dead Pea":fire?"Fire Pea":"Pea"}>
+      {deadFire?<div className="relative h-5 w-8"><span className="absolute left-0 top-1 text-sm opacity-70">👻</span><span className="absolute left-3 top-0 text-lg drop-shadow-[0_0_5px_rgba(251,146,60,.95)]">🟠</span><span className="absolute left-5 -top-1 text-xs">🔥</span></div>:
+       dead?<div className="relative h-5 w-8"><span className="absolute left-0 top-1 text-sm opacity-75">👻</span><span className="absolute left-3 top-0 text-lg drop-shadow-[0_0_5px_rgba(167,243,208,.9)]">⚪</span></div>:
+       fire?<div className="relative h-5 w-7"><span className="absolute left-0 top-0 text-lg drop-shadow-[0_0_5px_rgba(251,146,60,.95)]">🟠</span><span className="absolute left-3 -top-1 text-xs">🔥</span></div>:
+       <div className="text-lg drop-shadow-[0_0_3px_rgba(74,222,128,.8)]">🟢</div>}
+    </div>;
+  })}`;
+  if (source.includes(oldProjectileRender)) source = source.replace(oldProjectileRender, newProjectileRender);
+
   // Replace the old text-heavy discovery modal with a clearer threat card.
   const introRe = /\{state\.zombieIntro && \(\(\)=>\{const type=state\.zombieIntro;.*?\}\)\(\)\}/s;
   const intro = `{state.zombieIntro && (()=>{
@@ -33,7 +49,7 @@ window.__patchPvZRogueZombieIntelUI = function patchPvZRogueZombieIntelUI(source
     const info=ZOMBIE_INTEL[type]||{does:"Unknown threat.",weak:[],strong:[]};
     const st=zombieIntelStats(type,state);
     const plantKey=name=>Object.keys(plantDefs).find(k=>plantDefs[k]?.name===name);
-    const matchup=(name,kind)=>{const k=plantKey(name),pd=k?plantDefs[k]:null;return <div key={kind+name} className={\`flex items-center gap-2 rounded-xl border px-3 py-2 ${kind==="weak"?"border-rose-300/30 bg-rose-950/35":"border-lime-300/30 bg-lime-950/30"}\`}><div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-black/25 text-xl">{pd?.icon||"🌱"}</div><div className="min-w-0"><div className="truncate text-sm font-black text-white">{name}</div><div className={\`text-[10px] font-bold uppercase tracking-wider ${kind==="weak"?"text-rose-300":"text-lime-300"}\`}>{kind==="weak"?"Good counter":"Bad matchup"}</div></div></div>};
+    const matchup=(name,kind)=>{const k=plantKey(name),pd=k?plantDefs[k]:null;return <div key={kind+name} className={\`flex items-center gap-2 rounded-xl border px-3 py-2 \${kind==="weak"?"border-rose-300/30 bg-rose-950/35":"border-lime-300/30 bg-lime-950/30"}\`}><div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-black/25 text-xl">{pd?.icon||"🌱"}</div><div className="min-w-0"><div className="truncate text-sm font-black text-white">{name}</div><div className={\`text-[10px] font-bold uppercase tracking-wider \${kind==="weak"?"text-rose-300":"text-lime-300"}\`}>{kind==="weak"?"Good counter":"Bad matchup"}</div></div></div>};
     return <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
       <motion.div initial={{scale:.92,opacity:0,y:18}} animate={{scale:1,opacity:1,y:0}} className="w-full max-w-4xl overflow-hidden rounded-[28px] border border-cyan-300/30 bg-gradient-to-br from-slate-950 via-slate-950 to-emerald-950 text-white shadow-2xl">
         <div className="grid md:grid-cols-[260px_1fr]">
