@@ -138,13 +138,11 @@ window.__patchPvZRogueViscoFirePeas = function patchPvZRogueViscoFirePeas(source
             if (stats.mods.forcePush) target.x += 34;
             if (stats.mods.forceChoke) target.stun = Math.max(target.stun, 0.7);
           }`;
-  req(viscoMeleeOld, viscoMeleeNew, 'Visco melee reflection');
+  if (source.includes(viscoMeleeOld)) source = source.replace(viscoMeleeOld, viscoMeleeNew);
 
-  req(
-    '          } else if (visco) {\n            target.hp -= baseDamage * 0.1;\n            next.hp -= baseDamage * 0.35;\n            if (DEVICE_TIER !== "ultra") floaties.push({ id: makeId("viscoPunch"), text: "BOING ↩", x: target.x, y: target.row * CELL_H + 4, life: 0.75 });',
-    '          } else if (visco) {\n            target.hp -= baseDamage * 0.35;\n            next.hp -= baseDamage * 0.35;\n            if (DEVICE_TIER !== "ultra") floaties.push({ id: makeId("viscoPunch"), text: "35% ↩ 35%", x: target.x, y: target.row * CELL_H + 4, life: 0.75 });',
-    'Visco Pineapple reflection'
-  );
+  const pineappleOld = '          } else if (visco) {\n            target.hp -= baseDamage * 0.1;\n            next.hp -= baseDamage * 0.35;\n            if (DEVICE_TIER !== "ultra") floaties.push({ id: makeId("viscoPunch"), text: "BOING ↩", x: target.x, y: target.row * CELL_H + 4, life: 0.75 });';
+  const pineappleNew = '          } else if (visco) {\n            target.hp -= baseDamage * 0.35;\n            next.hp -= baseDamage * 0.35;\n            if (DEVICE_TIER !== "ultra") floaties.push({ id: makeId("viscoPunch"), text: "35% ↩ 35%", x: target.x, y: target.row * CELL_H + 4, life: 0.75 });';
+  if (source.includes(pineappleOld)) source = source.replace(pineappleOld, pineappleNew);
 
   const beamOld = `        const viscoReflectsBeam = target.type === "viscoelastic" && pr.source === "laserbean";
         if (viscoReflectsBeam) {
@@ -165,7 +163,7 @@ window.__patchPvZRogueViscoFirePeas = function patchPvZRogueViscoFirePeas(source
         } else {
           target.hp -= pr.damage * (target.flying ? pr.airMult : 1) * (targetMods.damageTaken || 1);
         }`;
-  req(beamOld, beamNew, 'Visco projectile reflection');
+  if (source.includes(beamOld)) source = source.replace(beamOld, beamNew);
 
   source = source.replace(
     '          target.hp -= stats.biteDamage * (stats.mods.biteDamageMult || 1);',
@@ -178,10 +176,9 @@ window.__patchPvZRogueViscoFirePeas = function patchPvZRogueViscoFirePeas(source
   );
 
   // Do not allow Count 25 to be skipped by a large Rogue Point jump.
-  req(
+  source = source.replace(
     '    if (s.buffCount >= 25 && !s.coolBrainzSpawned) {',
-    '    if ((s.buffCount >= 25 || s.roguePoints >= 250) && !s.coolBrainzSpawned) {',
-    'Cool-Brainz threshold spawn'
+    '    if ((s.buffCount >= 25 || s.roguePoints >= 250) && !s.coolBrainzSpawned) {'
   );
 
   return source;
