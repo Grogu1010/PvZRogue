@@ -74,9 +74,9 @@ function cardCost(type, state) {`);
                       <div className="w-5 shrink-0 leading-none"><PlantSprite type={type} small /></div>
                       <div className="min-w-0">
                         <div className="max-w-[72px] truncate text-[8px] font-bold leading-tight">{def.name}</div>
-                        <div className="text-[8px] leading-tight">{cooldownLeft > 0 ? \`${cooldownLeft.toFixed(1)}s\` : cost}</div>
+                        <div className="text-[8px] leading-tight">{cooldownLeft > 0 ? cooldownLeft.toFixed(1) + "s" : cost}</div>
                       </div>
-                      {cooldownLeft > 0 && <div className="absolute inset-x-0 bottom-0 h-0.5 bg-sky-300" style={{width: \`${Math.min(100,(cooldownLeft/Math.max(.01,packetCooldownFor(type,state)))*100)}%\`}} />}
+                      {cooldownLeft > 0 && <div className="absolute inset-x-0 bottom-0 h-0.5 bg-sky-300" style={{width: String(Math.min(100,(cooldownLeft/Math.max(.01,packetCooldownFor(type,state)))*100)) + "%"}} />}
                     </button>`,
     'seed packet cooldown UI'
   );
