@@ -15,10 +15,14 @@ window.__patchPvZRoguePacketCooldowns = function patchPvZRoguePacketCooldowns(so
   chomper: 20,
 };
 
+function isFreeBogofPineapple(type, state) {
+  const mods = state.plantMods?.pineapplepuncher || {};
+  return type === "pineapplepuncher" && !!mods.bogof && (((state.pineapplePlaced || 0) + 1) % 2 === 0);
+}
+
 function packetCooldownFor(type, state) {
   if ((state.plantMods?.[type] || {}).noPacketCooldown) return 0;
-  const mods = state.plantMods?.[type] || {};
-  if (type === "pineapplepuncher" && mods.bogof && (((state.pineapplePlaced || 0) + 1) % 2 === 0)) return 0;
+  if (isFreeBogofPineapple(type, state)) return 0;
   return (PLANT_PACKET_COOLDOWNS[type] ?? 4) * (state.cooldownMult || 1);
 }
 
@@ -38,7 +42,7 @@ function cardCost(type, state) {`);
 
   req(
     '      const cost = cardCost(prev.selected, prev);\n      if (prev.sun < cost) return prev;',
-    '      const cost = cardCost(prev.selected, prev);\n      if ((prev.packetCooldowns?.[prev.selected] || 0) > 0) return prev;\n      if (prev.sun < cost) return prev;',
+    '      const cost = cardCost(prev.selected, prev);\n      const freeBogofPineapple = isFreeBogofPineapple(prev.selected, prev);\n      if (!freeBogofPineapple && (prev.packetCooldowns?.[prev.selected] || 0) > 0) return prev;\n      if (prev.sun < cost) return prev;',
     'placement cooldown gate'
   );
 
@@ -62,7 +66,7 @@ function cardCost(type, state) {`);
     );
     const costLine = '<div className="text-[8px] leading-tight">{cost}</div>';
     if (source.includes(costLine)) {
-      source = source.replace(costLine, '<div className="text-[8px] leading-tight">{cooldownLeft > 0 ? cooldownLeft.toFixed(1) + "s" : cost}</div>');
+      source = source.replace(costLine, '<div className="text-[8px] leading-tight">{isFreeBogofPineapple(type,state) ? "FREE · 0s" : cooldownLeft > 0 ? cooldownLeft.toFixed(1) + "s" : cost}</div>');
     }
   }
 
