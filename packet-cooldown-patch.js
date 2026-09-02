@@ -8,7 +8,7 @@ window.__patchPvZRoguePacketCooldowns = function patchPvZRoguePacketCooldowns(so
   if (!source.includes(anchor)) throw new Error('Packet cooldown patch could not find cardCost.');
   source = source.replace(anchor, `const PLANT_PACKET_COOLDOWNS = {
   wallnut: 15,
-  tallnut: 15,
+  tallnut: 20,
   cherrybomb: 15,
   iceberglettuce: 15,
   pineapplepuncher: 20,
