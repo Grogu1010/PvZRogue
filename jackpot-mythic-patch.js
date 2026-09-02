@@ -16,7 +16,7 @@ window.__patchPvZRogueJackpotMythic = function patchPvZRogueJackpotMythic(source
   if (source.includes(globalMythic) && !source.includes('jackpot: { name:"Jackpot"')) {
     source = source.replace(
       globalMythic,
-      '  jackpot: { name:"Jackpot", desc:"Choose one plant and instantly gain every missing modifier for it, then jackpot one hidden random plant too." },\n' + globalMythic
+      '  jackpot: { name:"Jackpot", desc:"Choose one plant and instantly gain every missing non-MYTHIC modifier for it, then do the same for one hidden random plant." },\n' + globalMythic
     );
   }
 
@@ -31,6 +31,38 @@ window.__patchPvZRogueJackpotMythic = function patchPvZRogueJackpotMythic(source
       '  if (key === "jackpot") return { ...state, pendingPlantJackpot:true, mythicReward:{...reward,target:"GLOBAL",rarity:"MYTHIC"} };\n' + globalBranch
     );
   }
+
+  // Make Jackpot's non-Mythic rule explicit and future-proof. Even if a MYTHIC
+  // modifier is later added to plantBuffs, Jackpot must skip it.
+  source = source.replace(
+    '    desc: `Gain every missing ${plantDefs[plant].name} buff, plus every buff for one hidden random plant.`,',
+    '    desc: `Gain every missing non-MYTHIC ${plantDefs[plant].name} modifier, plus every non-MYTHIC modifier for one hidden random plant.`,'
+  );
+
+  source = source.replace(
+    '  return (plantBuffs[plant] || []).length > 0 && (plantBuffs[plant] || []).every(([name]) => gotten.has(name));',
+    '  const eligible = (plantBuffs[plant] || []).filter(([name]) => rarityForBuff(name) !== "MYTHIC");\n  return eligible.length > 0 && eligible.every(([name]) => gotten.has(name));'
+  );
+
+  source = source.replace(
+    '  for (const [name, desc, fn] of plantBuffs[plant] || []) {\n    if (!already.has(name)) {',
+    '  for (const [name, desc, fn] of plantBuffs[plant] || []) {\n    if (rarityForBuff(name) === "MYTHIC") continue;\n    if (!already.has(name)) {'
+  );
+
+  source = source.replace(
+    '    desc: `Gain every missing ${plantDefs[choice.plant].name} buff, plus every buff for one hidden random plant.`,',
+    '    desc: `Gain every missing non-MYTHIC ${plantDefs[choice.plant].name} modifier, plus every non-MYTHIC modifier for one hidden random plant.`,'
+  );
+
+  source = source.replace(
+    'const missing = (plantBuffs[choice.plant] || []).filter(([name]) => !already.has(name));',
+    'const missing = (plantBuffs[choice.plant] || []).filter(([name]) => rarityForBuff(name) !== "MYTHIC" && !already.has(name));'
+  );
+
+  source = source.replace(
+    'if (!missing.length) return `${plantDefs[choice.plant].name} has no missing buffs. You still get one hidden random plant jackpot.`;',
+    'if (!missing.length) return `${plantDefs[choice.plant].name} has no missing non-MYTHIC modifiers. You still get one hidden random plant jackpot.`;'
+  );
 
   // Jackpot follow-up choices and log entries should visually read as Mythic too.
   source = source.replace('    rarity: "Legendary",\n    weight: 1,', '    rarity: "MYTHIC",\n    weight: 1,');
