@@ -1,5 +1,5 @@
 window.__patchPvZRogueVisualPolish = function patchPvZRogueVisualPolish(source) {
-  source = source.replaceAll('"BOGOF"', '"BOGOF Deal!"');
+  source = source.replaceAll('"BOGOF"', '"BOGOF Deal on Pineapples!"');
   source = source.replace('className="w-full max-w-4xl overflow-hidden rounded-[28px] border border-cyan-300/30 bg-gradient-to-br from-slate-950 via-slate-950 to-emerald-950 text-white shadow-2xl"','className="w-full max-w-4xl max-h-[92dvh] overflow-hidden rounded-[28px] border border-cyan-300/30 bg-gradient-to-br from-slate-950 via-slate-950 to-emerald-950 text-white shadow-2xl"');
   source = source.replace('className="grid md:grid-cols-[260px_1fr]"','className="grid max-h-[92dvh] md:grid-cols-[210px_1fr]"');
   source = source.replace('className="relative flex min-h-[260px] items-center justify-center overflow-hidden border-b border-white/10 bg-gradient-to-b from-cyan-950/70 via-sky-950/60 to-emerald-950/70 p-6 md:border-b-0 md:border-r"','className="relative flex min-h-[190px] items-center justify-center overflow-hidden border-b border-white/10 bg-gradient-to-b from-cyan-950/70 via-sky-950/60 to-emerald-950/70 p-4 md:min-h-0 md:border-b-0 md:border-r"');
@@ -10,6 +10,7 @@ window.__patchPvZRogueVisualPolish = function patchPvZRogueVisualPolish(source) 
   source = source.replace('className="mt-5 grid gap-4 md:grid-cols-2"','className="mt-4 grid gap-3 md:grid-cols-2"');
   source = source.replace('className="mt-6 flex justify-end"','className="mt-4 flex justify-end"');
   source = source.replace('<div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-black/25 text-xl">{pd?.icon||"🌱"}</div>','<div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/25 p-0.5">{k?<PlantSprite type={k} action="idle" small />:<div className="grid h-full w-full place-items-center text-lg">?</div>}</div>');
+
   const sublimeRe = /function SublimeSprite\(\{ action="idle", small=false \}\) \{[\s\S]*?\n\}\n(?=function PlantSprite)/;
   if (sublimeRe.test(source)) {
     const sublime = String.raw`function SublimeSprite({ action="idle", small=false }) {
