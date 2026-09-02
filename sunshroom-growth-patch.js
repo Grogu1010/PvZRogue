@@ -40,7 +40,7 @@ window.__patchPvZRogueSunshroomGrowth = function patchPvZRogueSunshroomGrowth(so
           if (stats.mods.doubleBloom && Math.random() < stats.mods.doubleBloom) amount *= 2;
           if (stats.mods.goldenBloom && next.bloomCount % 5 === 0) amount += 50;
           if (stats.mods.bankGain) s.maxSun += stats.mods.bankGain;
-          suns.push({ id: makeId("sun"), amount, x: next.col * CELL_W + 28, y: next.row * CELL_H + 18, row: next.row, life: 12, age: 0, fromSunflower: !isSunShroom, fromSunShroom: isSunShroom, sunShroomTier: shroomTier });
+          suns.push({ id: makeId("sun"), amount, x: next.col * CELL_W + 28, y: next.row * CELL_H + 18, row: next.row, life: 12, age: 0, fromSunflower: true, fromSunShroom: isSunShroom, sunShroomTier: shroomTier });
           if (isSunShroom) {
             if (next.bloomCount === 3 && DEVICE_TIER !== "ultra") floaties.push({ id: makeId("shroomGrow2"), text: "🍄 GROW! 50☀", x: next.col * CELL_W + 10, y: next.row * CELL_H + 8, life: 1.1 });
             if (next.bloomCount === 8 && DEVICE_TIER !== "ultra") floaties.push({ id: makeId("shroomGrow3"), text: "🍄 GROW! 75☀", x: next.col * CELL_W + 10, y: next.row * CELL_H + 8, life: 1.1 });
